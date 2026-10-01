@@ -1,20 +1,64 @@
 {
+  "$schema": "./schema/book-platform.contract.v1.schema.json",
   "schema_version": "book-platform.contract.v1",
   "platform_id": "observability",
   "repository": "book-observability-platform",
   "status": "scaffolded",
   "api_version": "v1",
   "data_owner": "book-observability-platform",
-  "capabilities": ["platform-api", "health", "contract"],
+  "capabilities": [
+    "logs",
+    "metrics",
+    "traces",
+    "alerts",
+    "status"
+  ],
   "depends_on": [],
   "current_implementation": {
     "repository": "solo-empire",
-    "source_path": "infra/self-hosted-stack"
+    "source_path": "infra/self-hosted-stack",
+    "source_paths": [
+      "infra/self-hosted-stack",
+      "infra/tests/platform"
+    ],
+    "source_status": "current-implementation-in-solo-empire"
   },
   "migration": {
     "compatibility_adapter": "required",
     "shadow_parity": "pending",
     "cutover": "pending",
     "rollback": "required"
-  }
+  },
+  "migration_gates": [
+    "telemetry redaction",
+    "retention policy",
+    "alert drill"
+  ],
+  "surface_doc": "docs/CONTRACT-SURFACE.md",
+  "interfaces": [
+    {
+      "id": "observability.event.otlp-traces",
+      "kind": "event",
+      "direction": "consumes",
+      "name": "OTLP/HTTP traces to http://localhost:4318/v1/traces (Tempo), opt-in via OTEL_ENABLED=true",
+      "status": "current-in-solo-empire",
+      "source": "infra/api/telemetry.ts"
+    },
+    {
+      "id": "observability.http.api-health",
+      "kind": "http",
+      "direction": "consumes",
+      "name": "GET /health on solo-empire-api",
+      "status": "current-in-solo-empire",
+      "source": "infra/api/server.ts"
+    },
+    {
+      "id": "observability.config.compose-profile",
+      "kind": "config",
+      "direction": "provides",
+      "name": "docker compose profile `observability` (Prometheus, Grafana, Loki, Tempo, Alertmanager, exporters)",
+      "status": "current-in-solo-empire",
+      "source": "infra/self-hosted-stack/docker-compose.yml"
+    }
+  ]
 }
