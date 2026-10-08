@@ -1,0 +1,8 @@
+system_id: bookchaowalit-backend/book-backend/book-observability-platform
+prefix: CARD
+brand: "BOOK OBSERVABILITY PLATFORM"
+subtitle: "ขอบเขต contract ของ platform `observability` ยังไม่มี runtime"
+footer: "Book Observability Platform — Product Card"
+color: "#2f4b6e"
+audience: internal
+tier: L0
