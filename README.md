@@ -1,4 +1,4 @@
-# book-observability-platform
+# platform-observability
 
 `Observability` platform boundary for the Book Platform portfolio.
 
@@ -12,8 +12,8 @@ provider integration, database writer, credential, or customer payload.
 ## Boundary
 
 - Owner: `bookchaowalit-backend`
-- Repository: `book-observability-platform`
-- Target remote: `https://github.com/bookchaowalit-backend/book-observability-platform.git` (published; runtime not activated)
+- Repository: `platform-observability`
+- Target remote: `https://github.com/bookchaowalit-backend/platform-observability.git` (published; runtime not activated)
 - Contract: `book-platform.contract.v1`
 - Status: `scaffolded`
 - Data owner: the platform boundary identified in `contract.json`
