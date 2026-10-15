@@ -1,0 +1,20 @@
+{
+  "expect": "forbidden value (ipv4)",
+  "why": "gateway REQUEST_ID_RE accepts an IPv4 literal; only the value scan catches it",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "log",
+    "retention_class": "log-14d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "level": "info",
+    "event": "request.completed",
+    "method": "GET",
+    "route": "api",
+    "request_id": "10.20.30.40",
+    "status": 200,
+    "latency_ms": 12.5,
+    "subject_hash": "token:0123456789abcdef"
+  }
+}

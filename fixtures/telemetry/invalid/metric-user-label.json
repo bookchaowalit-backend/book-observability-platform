@@ -1,0 +1,20 @@
+{
+  "expect": "forbidden key",
+  "why": "high-cardinality personal label",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "metric",
+    "retention_class": "metric-30d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "name": "platform_requests_total",
+    "type": "counter",
+    "unit": "requests",
+    "value": 1,
+    "labels": {
+      "route": "api",
+      "user_id": "synthetic-42"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "expect": "forbidden value (ipv4)",
+  "why": "instance label carrying a host IP",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "metric",
+    "retention_class": "metric-30d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "name": "up",
+    "type": "gauge",
+    "unit": "1",
+    "value": 1,
+    "labels": {
+      "job": "node-exporter",
+      "instance": "192.168.1.10:9100"
+    }
+  }
+}

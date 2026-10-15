@@ -45,6 +45,9 @@ consumer.
 - retention policy
 - alert drill
 
+Gate evidence (proposed, not accepted):
+[BOO-160 redacted telemetry schema and retention](gates/BOO-160-telemetry-redaction-retention.md).
+
 ## Out of scope
 
 No production provider integration, credential, database writer or customer

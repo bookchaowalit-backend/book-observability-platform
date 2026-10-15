@@ -1,0 +1,21 @@
+{
+  "expect": "forbidden value (ipv6)",
+  "why": "client address on a span",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "trace",
+    "retention_class": "trace-7d",
+    "service": "solo-empire-api",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902b7",
+    "name": "GET /health",
+    "kind": "server",
+    "duration_seconds": 0.01,
+    "status_code": "ok",
+    "attributes": {
+      "net.peer.ip": "2001:db8::17"
+    }
+  }
+}

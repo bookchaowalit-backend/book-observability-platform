@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-10-15T15:00:00",
+  "revenue": {
+    "unavailable": false,
+    "received": 125000.0,
+    "pending": 40000.0,
+    "total": 165000.0,
+    "entries": 7,
+    "reporting_currency": "THB",
+    "received_display": "฿125,000",
+    "pending_display": "฿40,000",
+    "by_currency": {
+      "THB": {
+        "received": 125000.0,
+        "pending": 40000.0
+      }
+    }
+  },
+  "goals": {
+    "active": 3,
+    "tasks_total": 20,
+    "tasks_done": 9
+  },
+  "habits": {
+    "active": 0,
+    "logged_today": 0,
+    "unavailable": true
+  },
+  "tasks": {
+    "total": 120,
+    "done": 80,
+    "in_progress": 6
+  },
+  "cron": {
+    "total": 4,
+    "active": 4,
+    "success": 2,
+    "failed": 1,
+    "pending": 1,
+    "recent": [
+      {
+        "job_type": "sync_gmail",
+        "last_run": "2026-10-15T14:55:00+07:00",
+        "status": "failed"
+      },
+      {
+        "job_type": "run_alerts",
+        "last_run": "2026-10-15T14:50:00+07:00",
+        "status": "success"
+      },
+      {
+        "job_type": "Bad Job <x@example.invalid>",
+        "last_run": "2026-10-15T14:40:00+07:00",
+        "status": "success"
+      }
+    ],
+    "failed_jobs": [
+      "sync_gmail"
+    ]
+  },
+  "freshness": {
+    "error": "data_freshness.py failed for synthetic.owner@example.invalid at 10.20.30.40"
+  },
+  "alerts": {
+    "critical": 0,
+    "warnings": 2,
+    "info": 5,
+    "total": 7
+  },
+  "credentials": {
+    "gmail": {
+      "status": "not_configured",
+      "message": "credential provider not configured"
+    },
+    "calendar": {
+      "status": "configured",
+      "provider": "synthetic-vault"
+    },
+    "telegram": {
+      "status": "error",
+      "message": "credential provider check failed"
+    }
+  },
+  "system_health": {
+    "issues": 1,
+    "checks": 5,
+    "healthy": false,
+    "grade": "B"
+  },
+  "business_health": {
+    "issues": 0,
+    "checks": 3,
+    "healthy": true,
+    "grade": "A"
+  },
+  "score": {
+    "issues": 1,
+    "checks": 8,
+    "healthy": false,
+    "grade": "B"
+  }
+}

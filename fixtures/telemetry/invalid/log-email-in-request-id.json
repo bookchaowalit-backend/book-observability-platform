@@ -1,0 +1,20 @@
+{
+  "expect": "forbidden value (email)",
+  "why": "client-supplied X-Request-ID carrying an email",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "log",
+    "retention_class": "log-14d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "level": "info",
+    "event": "request.completed",
+    "method": "GET",
+    "route": "api",
+    "request_id": "synthetic.user@example.invalid",
+    "status": 200,
+    "latency_ms": 12.5,
+    "subject_hash": "token:0123456789abcdef"
+  }
+}
