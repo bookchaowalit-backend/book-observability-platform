@@ -1,0 +1,21 @@
+{
+  "expect": "forbidden key",
+  "why": "HttpInstrumentation default attribute with the full URL",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "trace",
+    "retention_class": "trace-7d",
+    "service": "solo-empire-api",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902b7",
+    "name": "GET /api/skills/{slug}",
+    "kind": "server",
+    "duration_seconds": 0.01,
+    "status_code": "ok",
+    "attributes": {
+      "http.url": "http://localhost:3001/api/skills/x?token=synthetic"
+    }
+  }
+}

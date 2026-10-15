@@ -1,0 +1,18 @@
+{
+  "schema_version": "observability.telemetry.v1",
+  "signal": "metric",
+  "retention_class": "metric-30d",
+  "service": "platform-workflow",
+  "environment": "local",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "name": "platform_request_duration_seconds_bucket",
+  "type": "histogram_bucket",
+  "unit": "seconds",
+  "value": 40,
+  "labels": {
+    "service": "platform-workflow",
+    "method": "GET",
+    "route": "/v1/runs/{run_id}",
+    "le": "0.25"
+  }
+}

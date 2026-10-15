@@ -1,0 +1,656 @@
+{
+  "issue": "BOO-160",
+  "status": "proposed-not-accepted",
+  "next_gate": "Define redacted telemetry schema and retention before connecting existing dashboards.",
+  "contract": {
+    "repository": "bookchaowalit/architecture-docs",
+    "commit": "687d228",
+    "path": "systems/architecture/solo-empire-api-contract-v1.md",
+    "sections": [
+      {
+        "anchor": "#operational-limits-and-failure-behavior",
+        "line": 163,
+        "answers": "Observability gap: structured logs, latency metrics, centralized audit retention"
+      },
+      {
+        "anchor": "#authentication-classes",
+        "lines": "63-65",
+        "answers": "provider credentials must not be written to logs or payload metadata"
+      },
+      {
+        "anchor": "#bookfinance-api-v1",
+        "lines": "104-107",
+        "answers": "audit_log keeps only redacted access metadata; raw bearer tokens and payload values never persisted"
+      }
+    ]
+  },
+  "schema": "schema/telemetry/redacted-telemetry-event.v1.schema.json",
+  "retention": [
+    {
+      "signal": "metric",
+      "retention_class": "metric-30d",
+      "store": "Prometheus TSDB",
+      "proposed_days": 30,
+      "purge_sla_hours": 24,
+      "backup": "excluded",
+      "current": {
+        "value": "30d",
+        "source": "solo-empire@b606a119:infra/self-hosted-stack/docker-compose.yml:361"
+      },
+      "rationale": "covers the widest dashboard window (30D) without long-term business history"
+    },
+    {
+      "signal": "log",
+      "retention_class": "log-14d",
+      "store": "Loki",
+      "proposed_days": 14,
+      "purge_sla_hours": 24,
+      "backup": "excluded",
+      "current": {
+        "value": "unbounded (no compactor retention_enabled/retention_period; only reject_old_samples_max_age 168h on ingest)",
+        "source": "solo-empire@b606a119:infra/self-hosted-stack/loki/loki.yml:33-38"
+      },
+      "rationale": "incident debugging window; logs carry the most re-identification risk so they get the shortest useful period after traces"
+    },
+    {
+      "signal": "trace",
+      "retention_class": "trace-7d",
+      "store": "Tempo",
+      "proposed_days": 7,
+      "purge_sla_hours": 24,
+      "backup": "excluded",
+      "current": {
+        "value": "not configured (Tempo default compactor block_retention 336h); WAL/blocks under /var/tempo while the volume mounts /tmp/tempo, so data is lost on container recreate",
+        "source": "solo-empire@b606a119:infra/self-hosted-stack/tempo/tempo.yml:17-23 and docker-compose.yml:1777"
+      },
+      "rationale": "sampled request detail is only needed for recent latency investigation"
+    },
+    {
+      "signal": "health_snapshot",
+      "retention_class": "health-90d",
+      "store": "file/object store (data/generated/briefings today)",
+      "proposed_days": 90,
+      "purge_sla_hours": 24,
+      "backup": "excluded",
+      "current": {
+        "value": "unbounded; --save writes health-DATE.json with raw revenue amounts and is never pruned",
+        "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:381-387"
+      },
+      "rationale": "one aggregate snapshot per day for quarter-over-quarter reliability trend; no raw records"
+    }
+  ],
+  "dashboard_consumers": [
+    {
+      "repository": "bookchaowalit-ai/data-analytics-dashboard-web",
+      "commit": "1f35f42",
+      "source": "lib/analytics.ts:20-24",
+      "windows_days": [
+        1,
+        7,
+        30
+      ],
+      "input_fields": [
+        "timestamp",
+        "segment",
+        "value"
+      ],
+      "note": "browser-only CSV; reads no telemetry store today. If fed from this platform, segment must be a schema label value (route/service/status), never a person or customer."
+    },
+    {
+      "repository": "solo-empire (Grafana provisioning)",
+      "commit": "b606a119",
+      "source": "infra/self-hosted-stack/grafana/provisioning/dashboards/{service-overview,system-metrics,mlops-reference}.json",
+      "metrics": [
+        "up",
+        "node_cpu_seconds_total",
+        "node_memory_MemAvailable_bytes",
+        "node_memory_MemTotal_bytes",
+        "node_filesystem_avail_bytes",
+        "node_filesystem_size_bytes",
+        "node_network_receive_bytes_total",
+        "node_network_transmit_bytes_total",
+        "node_load1",
+        "node_load5",
+        "node_load15",
+        "node_time_seconds",
+        "node_boot_time_seconds",
+        "traefik_service_requests_total",
+        "ALERTS",
+        "solo_empire_mlops_model_info",
+        "solo_empire_mlops_requests_total",
+        "solo_empire_mlops_predictions_total",
+        "solo_empire_mlops_errors_total"
+      ],
+      "labels": [
+        "mode",
+        "fstype",
+        "mountpoint",
+        "device",
+        "cpu",
+        "service",
+        "code",
+        "alertstate",
+        "alertname",
+        "job",
+        "model_name",
+        "model_version"
+      ],
+      "max_range": "5m rate windows; dashboard time range default, so 30d metric retention is sufficient"
+    }
+  ],
+  "sources": {
+    "system_health": {
+      "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py",
+      "producer": "full_health()",
+      "lines": "174-258",
+      "fields": [
+        {
+          "path": "schema_version",
+          "disposition": "transform",
+          "target": "source_schema_version",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:177"
+        },
+        {
+          "path": "timestamp",
+          "disposition": "transform",
+          "target": "observed_at",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:178",
+          "why": "naive wall-clock time from datetime.now() on the Asia/Bangkok host; redactor reads it as Asia/Bangkok (override with --assume-tz) and converts to UTC (gap G4)"
+        },
+        {
+          "path": "revenue.unavailable",
+          "disposition": "transform",
+          "target": "sections.finance.available",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:48"
+        },
+        {
+          "path": "revenue.received",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:49",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.pending",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:50",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.total",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:51",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.entries",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:52",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.reporting_currency",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:53",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.received_display",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:54",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.pending_display",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:55",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "revenue.by_currency",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:56",
+          "why": "raw finance amount/ledger detail"
+        },
+        {
+          "path": "goals.active",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:70",
+          "why": "personal productivity record count"
+        },
+        {
+          "path": "goals.tasks_total",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:70",
+          "why": "personal productivity record count"
+        },
+        {
+          "path": "goals.tasks_done",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:70",
+          "why": "personal productivity record count"
+        },
+        {
+          "path": "goals.unavailable",
+          "disposition": "transform",
+          "target": "sections.goals.available",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:67"
+        },
+        {
+          "path": "habits.active",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:82",
+          "why": "personal habit record count"
+        },
+        {
+          "path": "habits.logged_today",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:82",
+          "why": "personal habit record count"
+        },
+        {
+          "path": "habits.unavailable",
+          "disposition": "transform",
+          "target": "sections.habits.available",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:81"
+        },
+        {
+          "path": "tasks.total",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:91",
+          "why": "personal task record count"
+        },
+        {
+          "path": "tasks.done",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:91",
+          "why": "personal task record count"
+        },
+        {
+          "path": "tasks.in_progress",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:91",
+          "why": "personal task record count"
+        },
+        {
+          "path": "cron.total",
+          "disposition": "keep",
+          "target": "sections.cron.total",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:110"
+        },
+        {
+          "path": "cron.active",
+          "disposition": "keep",
+          "target": "sections.cron.active",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:110"
+        },
+        {
+          "path": "cron.success",
+          "disposition": "keep",
+          "target": "sections.cron.success",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:110"
+        },
+        {
+          "path": "cron.failed",
+          "disposition": "keep",
+          "target": "sections.cron.failed",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:110"
+        },
+        {
+          "path": "cron.pending",
+          "disposition": "transform",
+          "target": "sections.cron.pending_jobs",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:112",
+          "why": "renamed: 'pending' is a forbidden finance key"
+        },
+        {
+          "path": "cron.recent[].job_type",
+          "disposition": "keep",
+          "target": "sections.cron.recent[].job_type",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:106",
+          "why": "validated against ^[a-z][a-z0-9_]{0,63}$; others dropped"
+        },
+        {
+          "path": "cron.recent[].last_run",
+          "disposition": "transform",
+          "target": "sections.cron.recent[].last_run",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:106",
+          "why": "normalised to UTC; naive values read as Asia/Bangkok"
+        },
+        {
+          "path": "cron.recent[].status",
+          "disposition": "keep",
+          "target": "sections.cron.recent[].status",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:106",
+          "why": "unknown statuses become 'unknown'"
+        },
+        {
+          "path": "cron.failed_jobs",
+          "disposition": "keep",
+          "target": "sections.cron.failed_jobs",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:107"
+        },
+        {
+          "path": "cron.error",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:117",
+          "why": "str(e) free text (gap G3)"
+        },
+        {
+          "path": "freshness.ok",
+          "disposition": "keep",
+          "target": "sections.freshness.ok",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:353"
+        },
+        {
+          "path": "freshness.stale",
+          "disposition": "keep",
+          "target": "sections.freshness.stale",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:213"
+        },
+        {
+          "path": "freshness.missing",
+          "disposition": "keep",
+          "target": "sections.freshness.missing",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:213"
+        },
+        {
+          "path": "freshness.error",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:135",
+          "why": "str(e) free text"
+        },
+        {
+          "path": "alerts.critical",
+          "disposition": "keep",
+          "target": "sections.alerts.critical",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:234"
+        },
+        {
+          "path": "alerts.warnings",
+          "disposition": "keep",
+          "target": "sections.alerts.warnings",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:236"
+        },
+        {
+          "path": "alerts.info",
+          "disposition": "keep",
+          "target": "sections.alerts.info",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:357"
+        },
+        {
+          "path": "alerts.total",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:151",
+          "why": "other alerts.py summary keys are not read by full_health(); only critical/warnings/info are kept"
+        },
+        {
+          "path": "alerts.error",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:154",
+          "why": "str(e) free text"
+        },
+        {
+          "path": "credentials.gmail.status",
+          "disposition": "keep",
+          "target": "sections.credentials.gmail.status",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:298"
+        },
+        {
+          "path": "credentials.gmail.message",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:271",
+          "why": "free text"
+        },
+        {
+          "path": "credentials.gmail.provider",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:285",
+          "why": "secret-provider name"
+        },
+        {
+          "path": "credentials.calendar.status",
+          "disposition": "keep",
+          "target": "sections.credentials.calendar.status",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:298"
+        },
+        {
+          "path": "credentials.calendar.message",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:271",
+          "why": "free text"
+        },
+        {
+          "path": "credentials.calendar.provider",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:285",
+          "why": "secret-provider name"
+        },
+        {
+          "path": "credentials.telegram.status",
+          "disposition": "keep",
+          "target": "sections.credentials.telegram.status",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:298"
+        },
+        {
+          "path": "credentials.telegram.message",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:271",
+          "why": "free text"
+        },
+        {
+          "path": "credentials.telegram.provider",
+          "disposition": "drop",
+          "target": null,
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:285",
+          "why": "secret-provider name"
+        },
+        {
+          "path": "system_health.issues",
+          "disposition": "transform",
+          "target": "grades.system.issues",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:222"
+        },
+        {
+          "path": "system_health.checks",
+          "disposition": "transform",
+          "target": "grades.system.checks",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:222"
+        },
+        {
+          "path": "system_health.healthy",
+          "disposition": "transform",
+          "target": "grades.system.healthy",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:222"
+        },
+        {
+          "path": "system_health.grade",
+          "disposition": "transform",
+          "target": "grades.system.grade",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:222"
+        },
+        {
+          "path": "business_health.issues",
+          "disposition": "transform",
+          "target": "grades.business.issues",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:242"
+        },
+        {
+          "path": "business_health.checks",
+          "disposition": "transform",
+          "target": "grades.business.checks",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:242"
+        },
+        {
+          "path": "business_health.healthy",
+          "disposition": "transform",
+          "target": "grades.business.healthy",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:242"
+        },
+        {
+          "path": "business_health.grade",
+          "disposition": "transform",
+          "target": "grades.business.grade",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:242"
+        },
+        {
+          "path": "score.issues",
+          "disposition": "transform",
+          "target": "grades.overall.issues",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:252"
+        },
+        {
+          "path": "score.checks",
+          "disposition": "transform",
+          "target": "grades.overall.checks",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:252"
+        },
+        {
+          "path": "score.healthy",
+          "disposition": "transform",
+          "target": "grades.overall.healthy",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:252"
+        },
+        {
+          "path": "score.grade",
+          "disposition": "transform",
+          "target": "grades.overall.grade",
+          "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:252"
+        }
+      ]
+    },
+    "otel_traces": {
+      "source": "solo-empire@b606a119:infra/api/telemetry.ts",
+      "fields": [
+        {
+          "path": "resource.service.name",
+          "disposition": "keep",
+          "target": "attributes.service.name",
+          "source": "telemetry.ts:29-30"
+        },
+        {
+          "path": "resource.service.version",
+          "disposition": "keep",
+          "target": "attributes.service.version",
+          "source": "telemetry.ts:31"
+        },
+        {
+          "path": "span.attributes.http.method",
+          "disposition": "keep",
+          "target": "attributes.http.method",
+          "source": "server.ts:524"
+        },
+        {
+          "path": "span.attributes.http.route",
+          "disposition": "transform",
+          "target": "attributes.http.route",
+          "source": "server.ts:524",
+          "why": "source sets url.pathname (raw path); must become the route template (gap G2)"
+        },
+        {
+          "path": "span.status.message",
+          "disposition": "drop",
+          "target": null,
+          "source": "telemetry.ts:70-73",
+          "why": "error.message free text (gap G2)"
+        },
+        {
+          "path": "HttpInstrumentation default attributes (http.url, http.target, net.peer.ip, http.user_agent, ...)",
+          "disposition": "drop",
+          "target": null,
+          "source": "telemetry.ts:34",
+          "why": "auto-instrumentation adds full URL, client address and user agent"
+        }
+      ]
+    },
+    "gateway_request_completed": {
+      "source": "bookchaowalit-backend/platform-api-gateway@6e1fb34:src/book_api_gateway/server.py:363-372",
+      "fields": [
+        {
+          "path": "event",
+          "disposition": "keep",
+          "target": "event"
+        },
+        {
+          "path": "method",
+          "disposition": "keep",
+          "target": "method"
+        },
+        {
+          "path": "route",
+          "disposition": "keep",
+          "target": "route"
+        },
+        {
+          "path": "request_id",
+          "disposition": "keep",
+          "target": "request_id",
+          "why": "schema allows only server-generated uuid4 hex; the gateway still echoes a client X-Request-ID matching REQUEST_ID_RE (server.py:26,134-138), which the schema rejects (gap G5)"
+        },
+        {
+          "path": "status",
+          "disposition": "keep",
+          "target": "status"
+        },
+        {
+          "path": "latency_ms",
+          "disposition": "keep",
+          "target": "latency_ms"
+        },
+        {
+          "path": "subject_hash",
+          "disposition": "keep",
+          "target": "subject_hash",
+          "why": "unkeyed sha256(token)[:16] (server.py:229), linkable pseudonym (gap G6)"
+        }
+      ]
+    },
+    "pr1_access_log_reference": {
+      "source": "bookchaowalit-backend/platform-observability PR #1 (codex/shared-infrastructure-20261015, not on main): src/platform_observability/middleware.py",
+      "fields": [
+        "service",
+        "method",
+        "route",
+        "status",
+        "duration_seconds",
+        "correlation_id",
+        "trace_id"
+      ],
+      "adapter": "scripts/telemetry_policy.py envelope_access_log(): collector adds the envelope, fixed event 'http.request' and level from status",
+      "schema_accommodations": [
+        "route: Starlette converter segments {name:conv}, trailing '/', dot-first segments ('/.well-known')",
+        "service: [A-Za-z0-9_.-]{1,64} (same as instrument())",
+        "metric label instance: pod name without port (config/prometheus.yaml relabel)",
+        "trace attributes: telemetry.sdk.*, service.instance.id resource attributes"
+      ],
+      "open_for_owner": [
+        "duration_seconds maximum 3600 is not enforced by PR #1",
+        "PR #1 emits no envelope (schema_version/signal/retention_class/environment/observed_at); a collector adapter must add it"
+      ]
+    }
+  }
+}

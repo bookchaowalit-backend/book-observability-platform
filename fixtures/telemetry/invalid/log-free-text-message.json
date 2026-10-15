@@ -1,0 +1,16 @@
+{
+  "expect": "forbidden key",
+  "why": "free-text messages are not allowed in logs",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "log",
+    "retention_class": "log-14d",
+    "service": "platform-workflow",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "level": "error",
+    "event": "telemetry_export_failed",
+    "error_class": "ConnectTimeout",
+    "message": "connect ECONNREFUSED"
+  }
+}

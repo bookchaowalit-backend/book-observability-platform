@@ -1,0 +1,20 @@
+{
+  "schema_version": "observability.telemetry.v1",
+  "signal": "metric",
+  "retention_class": "metric-30d",
+  "service": "Shared_API",
+  "environment": "staging",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "name": "platform_request_duration_seconds_bucket",
+  "type": "histogram_bucket",
+  "unit": "seconds",
+  "value": 3,
+  "labels": {
+    "service": "Shared_API",
+    "method": "GET",
+    "route": "/api/items/{item_id:int}",
+    "le": "0.005",
+    "job": "shared-infra",
+    "instance": "shared-api-7d9f8b6c5-x2x7q"
+  }
+}

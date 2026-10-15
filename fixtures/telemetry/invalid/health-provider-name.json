@@ -1,0 +1,91 @@
+{
+  "expect": "forbidden key",
+  "why": "credential provider name copied into the snapshot",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "health_snapshot",
+    "retention_class": "health-90d",
+    "service": "solo-empire-health",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "source_schema_version": "1.0",
+    "grades": {
+      "system": {
+        "issues": 1,
+        "checks": 5,
+        "healthy": false,
+        "grade": "B"
+      },
+      "business": {
+        "issues": 0,
+        "checks": 3,
+        "healthy": true,
+        "grade": "A"
+      },
+      "overall": {
+        "issues": 1,
+        "checks": 8,
+        "healthy": false,
+        "grade": "B"
+      }
+    },
+    "sections": {
+      "finance": {
+        "available": true
+      },
+      "goals": {
+        "available": true
+      },
+      "habits": {
+        "available": false
+      },
+      "tasks": {
+        "available": true
+      },
+      "cron": {
+        "available": true,
+        "total": 4,
+        "active": 4,
+        "success": 2,
+        "failed": 1,
+        "pending_jobs": 1,
+        "failed_jobs": [
+          "sync_gmail"
+        ],
+        "recent": [
+          {
+            "job_type": "sync_gmail",
+            "status": "failed",
+            "last_run": "2026-10-15T07:55:00Z"
+          },
+          {
+            "job_type": "run_alerts",
+            "status": "success",
+            "last_run": "2026-10-15T07:50:00Z"
+          }
+        ]
+      },
+      "freshness": {
+        "available": false
+      },
+      "alerts": {
+        "available": true,
+        "critical": 0,
+        "warnings": 2,
+        "info": 5
+      },
+      "credentials": {
+        "gmail": {
+          "status": "not_configured"
+        },
+        "calendar": {
+          "status": "configured",
+          "provider": "synthetic-vault"
+        },
+        "telegram": {
+          "status": "error"
+        }
+      }
+    }
+  }
+}

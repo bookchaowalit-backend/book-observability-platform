@@ -1,0 +1,16 @@
+{
+  "expect": "$.name matches a disallowed pattern",
+  "why": "raw business amount exported as a metric",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "metric",
+    "retention_class": "metric-30d",
+    "service": "solo-empire-health",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "name": "revenue_received_thb",
+    "type": "gauge",
+    "unit": "1",
+    "value": 125000
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "observability.telemetry.v1",
+  "signal": "trace",
+  "retention_class": "trace-7d",
+  "service": "media.io",
+  "environment": "staging",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "2658756600664653",
+  "parent_span_id": "1234567890123456",
+  "name": "GET /api/v1/usd2thb",
+  "kind": "server",
+  "duration_seconds": 0.01,
+  "status_code": "ok",
+  "attributes": {
+    "service.name": "media.io",
+    "http.route": "/api/v1/usd2thb",
+    "http.response.status_code": 200
+  }
+}

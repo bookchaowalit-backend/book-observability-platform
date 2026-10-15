@@ -25,6 +25,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check out platform-api-gateway (public, pinned) for BOO-160 gateway telemetry tests
+        uses: actions/checkout@v4
+        with:
+          repository: bookchaowalit-backend/platform-api-gateway
+          ref: 6e1fb34489779582b55ad86f09940b46f3d7a17a
+          path: .ci/platform-api-gateway
+          persist-credentials: false
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -34,4 +42,7 @@ jobs:
         run: python3 scripts/check_schema_pin.py
 
       - name: Run offline contract check and tests
+        env:
+          PLATFORM_API_GATEWAY_SRC: ${{ github.workspace }}/.ci/platform-api-gateway/src
+          REQUIRE_GATEWAY_TESTS: "1"
         run: bash scripts/check.sh

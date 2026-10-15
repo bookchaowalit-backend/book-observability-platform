@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bookchaowalit-backend/platform-observability/schema/telemetry/redacted-telemetry-event.v1.schema.json",
+  "title": "Redacted telemetry event v1 (PROPOSED, BOO-160)",
+  "description": "Allow-list for telemetry that may reach the observability platform: one log, metric, trace span or health snapshot per document. Every object is closed (additionalProperties false), free-text fields do not exist, and x-forbidden lists keys and value patterns that must never appear anywhere in an event even if a later schema version opens an object. Retention periods per retention_class live in fixtures/gates/telemetry-redaction-retention.json. Proposed by BOO-160; not accepted by the owner.",
+  "x-status": "proposed-not-accepted",
+  "x-forbidden": {
+    "keys": [
+      "email", "e_mail", "phone", "phone_number", "password", "passwd", "secret", "client_secret",
+      "token", "access_token", "refresh_token", "api_key", "apikey", "authorization", "cookie",
+      "set_cookie", "session", "session_id", "ip", "ip_address", "client_ip", "remote_addr",
+      "x_forwarded_for", "net.peer.ip", "net.sock.peer.addr", "client.address", "user_agent",
+      "http.user_agent", "user_agent.original", "url", "http.url", "url.full", "http.target",
+      "url.query", "query", "query_string", "body", "request_body", "response_body", "payload",
+      "message", "status_message", "error_message", "exception.message", "exception.stacktrace",
+      "stack", "stacktrace", "db.statement", "amount", "balance", "price", "revenue", "received",
+      "received_display", "pending_display", "by_currency", "total_amount", "currency_amount",
+      "customer", "customer_id", "customer_name", "user_id", "tenant_id", "workspace_id",
+      "full_name", "first_name", "last_name", "address", "card_number", "iban", "account_number",
+      "national_id", "provider", "jwt", "enduser_id", "id_token", "credential", "credentials_json", "private_key",
+      "bot_token", "chat_id", "line_user_id", "credit_card", "cvv", "cvc"
+    ],
+    "key_normalisation": "camelCase split to snake_case, lowercased, '-' and '.' read as '_'; a key is forbidden when the listed name equals it or appears in it as a run of whole '_'-separated components (so 'accessToken', 'x-api-key', 'user_email' and 'Net-Peer-IP' all match)",
+    "exempt_when_format_matches": {
+      "description": "Fields whose schema pattern is a closed hex/UUID format cannot carry free text. Their values skip the value-pattern scan only when they already match that format; a non-matching value (e.g. a client-supplied request ID) is still scanned and also fails the schema.",
+      "trace_id": "^[0-9a-f]{32}$",
+      "span_id": "^[0-9a-f]{16}$",
+      "parent_span_id": "^[0-9a-f]{16}$",
+      "correlation_id": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "request_id": "^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+      "service.instance.id": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "subject_hash": "^token:[0-9a-f]{16}$"
+    },
+    "value_patterns": {
+      "email": "[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}",
+      "bearer_token": "(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{8,}",
+      "basic_auth": "(?i)\\bbasic\\s+[A-Za-z0-9+/]{8,}={0,2}",
+      "jwt": "\\beyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.",
+      "provider_key": "\\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|\\bsk-(?:ant|proj)-[A-Za-z0-9_-]{16,}|\\bsk-[A-Za-z0-9]{32,}|\\bya29\\.[A-Za-z0-9_-]{10,}|\\bgh[pousr]_[A-Za-z0-9]{20,}|\\bgithub_pat_[A-Za-z0-9_]{20,}|\\bxox[abprs]-[A-Za-z0-9-]{10,}|\\bAKIA[0-9A-Z]{16}\\b|\\bAIza[0-9A-Za-z_-]{20,}",
+      "telegram_bot_token": "(?<![0-9A-Za-z])\\d{6,12}:[A-Za-z0-9_-]{30,}",
+      "private_key": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+      "ipv4": "(?<![0-9.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![0-9.])",
+      "ipv6": "(?i)(?<![0-9a-z:])(?:(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)(?![0-9a-z:])",
+      "currency_amount": "(?i)[\u0e3f$\u20ac\u00a3\u00a5]\\s?\\d|\\d\\s?\u0e3f|\\b\\d[\\d,]*(?:\\.\\d+)?\\s?(?:thb|usd|eur|gbp|jpy|sgd|baht)\\b|\\b(?:thb|usd|eur|gbp|jpy|sgd)(?:\\s\\d|\\d*[,.]\\d)",
+      "phone": "\\+\\d[\\d ()-]{7,}\\d",
+      "thai_phone": "(?<![0-9A-Za-z])(?:0[689]\\d[- ]?\\d{3}[- ]?\\d{4}|66[689]\\d{8})(?![0-9A-Za-z])",
+      "long_digit_run": "(?<![0-9A-Za-z])\\d{12,19}(?![0-9A-Za-z])",
+      "grouped_number": "(?<![0-9A-Za-z])(?:\\d{4}[ -]){3}\\d{1,7}(?![0-9A-Za-z])|(?<![0-9A-Za-z])\\d-\\d{4}-\\d{5}-\\d{2}-\\d(?![0-9A-Za-z])",
+      "url": "(?i)\\b[a-z][a-z0-9+.-]{1,15}://|\\bwww\\.[a-z0-9-]+\\.[a-z]{2,}|(?<![\\w./-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|net|org|io|co|th|dev|app|ai|me|invalid|example)/[^\\s/]"
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/log"},
+    {"$ref": "#/$defs/metric"},
+    {"$ref": "#/$defs/trace"},
+    {"$ref": "#/$defs/health_snapshot"}
+  ],
+  "$defs": {
+    "schema_version": {"const": "observability.telemetry.v1"},
+    "service": {"description": "Same character set PR #1 instrument() accepts.", "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"},
+    "environment": {"enum": ["local", "ci", "staging", "production"]},
+    "timestamp": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?Z$"},
+    "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "OTHER"]},
+    "route": {
+      "description": "A server route template ('/api/skills/{slug}', Starlette converters '{item_id:int}', optional trailing '/', dot-first segments such as '/.well-known') or a fixed route class ('api', 'healthz', 'unmatched'). Literal segments must start with a letter, so raw numeric IDs are rejected. Never a raw path, query string or URL.",
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^(?:[a-z][a-z_]{0,31}|/|(?:/(?:\\{[A-Za-z_][A-Za-z0-9_]{0,31}(?::[a-z]{1,16})?\\}|\\.?[A-Za-z][A-Za-z0-9_.:-]{0,63}))+/?)$"
+    },
+    "status_code": {"type": "integer", "minimum": 100, "maximum": 599},
+    "duration_seconds": {"type": "number", "minimum": 0, "maximum": 3600},
+    "trace_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "span_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "count": {"type": "integer", "minimum": 0, "maximum": 100000000},
+    "grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issues", "checks", "healthy", "grade"],
+      "properties": {
+        "issues": {"$ref": "#/$defs/count"},
+        "checks": {"$ref": "#/$defs/count"},
+        "healthy": {"type": "boolean"},
+        "grade": {"enum": ["A", "B", "C", "D"]}
+      }
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available"],
+      "properties": {"available": {"type": "boolean"}}
+    },
+    "credential_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {"status": {"enum": ["configured", "not_configured", "error"]}}
+    },
+    "job_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "signal", "retention_class", "service", "environment", "observed_at", "level", "event"],
+      "properties": {
+        "schema_version": {"$ref": "#/$defs/schema_version"},
+        "signal": {"const": "log"},
+        "retention_class": {"const": "log-14d"},
+        "service": {"$ref": "#/$defs/service"},
+        "environment": {"$ref": "#/$defs/environment"},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "level": {"enum": ["debug", "info", "warn", "error"]},
+        "event": {"description": "Fixed event name chosen in code, never interpolated text.", "type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}(?:\\.[a-z][a-z0-9_]{0,47}){0,3}$"},
+        "method": {"$ref": "#/$defs/method"},
+        "route": {"$ref": "#/$defs/route"},
+        "status": {"$ref": "#/$defs/status_code"},
+        "duration_seconds": {"$ref": "#/$defs/duration_seconds"},
+        "latency_ms": {"type": "number", "minimum": 0, "maximum": 3600000},
+        "request_id": {"description": "Server-generated only (uuid4 hex or canonical UUID). Client-supplied X-Request-ID values are rejected (gap G5).", "type": "string", "pattern": "^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"},
+        "correlation_id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+        "trace_id": {"$ref": "#/$defs/trace_id"},
+        "subject_hash": {"description": "Pseudonymous subject digest (current gateway format). Linkable across events; see gap G6.", "type": "string", "pattern": "^token:[0-9a-f]{16}$"},
+        "error_class": {"description": "Exception class or fixed reason code; never the exception message.", "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]{0,63}$"}
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "signal", "retention_class", "service", "environment", "observed_at", "name", "type", "value"],
+      "properties": {
+        "schema_version": {"$ref": "#/$defs/schema_version"},
+        "signal": {"const": "metric"},
+        "retention_class": {"const": "metric-30d"},
+        "service": {"$ref": "#/$defs/service"},
+        "environment": {"$ref": "#/$defs/environment"},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "name": {
+          "type": "string",
+          "allOf": [
+            {"pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"},
+            {"not": {"pattern": "(?i)(?:revenue|amount|balance|price|salary|income|email|phone|customer|user_id|tenant)"}}
+          ]
+        },
+        "type": {"enum": ["counter", "gauge", "histogram_bucket", "histogram_sum", "histogram_count"]},
+        "unit": {"enum": ["1", "seconds", "bytes", "requests", "ratio"]},
+        "value": {"type": "number"},
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service": {"$ref": "#/$defs/service"},
+            "method": {"$ref": "#/$defs/method"},
+            "route": {"$ref": "#/$defs/route"},
+            "status": {"type": "string", "pattern": "^[1-5][0-9]{2}$"},
+            "job": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+            "le": {"type": "string", "pattern": "^(?:\\+Inf|[0-9]+(?:\\.[0-9]+)?)$"},
+            "severity": {"enum": ["info", "warning", "critical"]},
+            "alertname": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$"},
+            "check": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+            "instance": {"description": "service-or-pod name with an optional :port (PR #1 relabels instance to the pod name); IP literals are rejected.", "type": "string", "pattern": "^[a-z][a-z0-9.-]{0,62}(?::[0-9]{1,5})?$"},
+            "code": {"type": "string", "pattern": "^[1-5][0-9]{2}$"},
+            "alertstate": {"enum": ["pending", "firing"]},
+            "cpu": {"type": "string", "pattern": "^[0-9]{1,4}$"},
+            "mode": {"type": "string", "pattern": "^[a-z_]{1,32}$"},
+            "device": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,32}$"},
+            "fstype": {"type": "string", "pattern": "^[a-z0-9_.-]{1,32}$"},
+            "mountpoint": {
+              "description": "Filesystem mount; per-user home paths would carry a username and are rejected.",
+              "type": "string",
+              "allOf": [
+                {"pattern": "^/[A-Za-z0-9_./-]{0,127}$"},
+                {"not": {"pattern": "^/(?:home|Users|root)(?:/|$)"}}
+              ]
+            },
+            "model_name": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+            "model_version": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}$"}
+          }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "signal", "retention_class", "service", "environment", "observed_at", "trace_id", "span_id", "name", "kind", "duration_seconds", "status_code"],
+      "properties": {
+        "schema_version": {"$ref": "#/$defs/schema_version"},
+        "signal": {"const": "trace"},
+        "retention_class": {"const": "trace-7d"},
+        "service": {"$ref": "#/$defs/service"},
+        "environment": {"$ref": "#/$defs/environment"},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "trace_id": {"$ref": "#/$defs/trace_id"},
+        "span_id": {"$ref": "#/$defs/span_id"},
+        "parent_span_id": {"$ref": "#/$defs/span_id"},
+        "name": {"description": "'METHOD route-template' or a fixed operation name.", "type": "string", "pattern": "^(?:(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|OTHER|HTTP) )?[A-Za-z/{][A-Za-z0-9_./{}:-]{0,255}$"},
+        "kind": {"enum": ["server", "client", "internal", "producer", "consumer"]},
+        "duration_seconds": {"$ref": "#/$defs/duration_seconds"},
+        "status_code": {"description": "Span status code only; the span status description (exception text) is never exported.", "enum": ["unset", "ok", "error"]},
+        "attributes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "service.name": {"$ref": "#/$defs/service"},
+            "service.version": {"type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]{0,31}$"},
+            "http.request.method": {"$ref": "#/$defs/method"},
+            "http.method": {"$ref": "#/$defs/method"},
+            "http.route": {"$ref": "#/$defs/route"},
+            "http.response.status_code": {"$ref": "#/$defs/status_code"},
+            "error.type": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.]{0,63}$"},
+            "telemetry.sdk.name": {"enum": ["opentelemetry"]},
+            "telemetry.sdk.language": {"type": "string", "pattern": "^[a-z]{1,16}$"},
+            "telemetry.sdk.version": {"type": "string", "pattern": "^[0-9][0-9A-Za-z.+-]{0,31}$"},
+            "service.instance.id": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}
+          }
+        }
+      }
+    },
+    "health_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "signal", "retention_class", "service", "environment", "observed_at", "source_schema_version", "grades", "sections"],
+      "properties": {
+        "schema_version": {"$ref": "#/$defs/schema_version"},
+        "signal": {"const": "health_snapshot"},
+        "retention_class": {"const": "health-90d"},
+        "service": {"$ref": "#/$defs/service"},
+        "environment": {"$ref": "#/$defs/environment"},
+        "observed_at": {"$ref": "#/$defs/timestamp"},
+        "source_schema_version": {"const": "1.0"},
+        "grades": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["system", "business", "overall"],
+          "properties": {
+            "system": {"$ref": "#/$defs/grade"},
+            "business": {"$ref": "#/$defs/grade"},
+            "overall": {"$ref": "#/$defs/grade"}
+          }
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["finance", "goals", "habits", "tasks", "cron", "freshness", "alerts", "credentials"],
+          "properties": {
+            "finance": {"$ref": "#/$defs/availability"},
+            "goals": {"$ref": "#/$defs/availability"},
+            "habits": {"$ref": "#/$defs/availability"},
+            "tasks": {"$ref": "#/$defs/availability"},
+            "cron": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available"],
+              "properties": {
+                "available": {"type": "boolean"},
+                "total": {"$ref": "#/$defs/count"},
+                "active": {"$ref": "#/$defs/count"},
+                "success": {"$ref": "#/$defs/count"},
+                "failed": {"$ref": "#/$defs/count"},
+                "pending_jobs": {"$ref": "#/$defs/count"},
+                "failed_jobs": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/job_type"}},
+                "recent": {
+                  "type": "array",
+                  "maxItems": 5,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["job_type", "status"],
+                    "properties": {
+                      "job_type": {"$ref": "#/$defs/job_type"},
+                      "last_run": {"$ref": "#/$defs/timestamp"},
+                      "status": {"enum": ["success", "failed", "running", "pending", "skipped", "unknown"]}
+                    }
+                  }
+                }
+              }
+            },
+            "freshness": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available"],
+              "properties": {
+                "available": {"type": "boolean"},
+                "ok": {"$ref": "#/$defs/count"},
+                "stale": {"$ref": "#/$defs/count"},
+                "missing": {"$ref": "#/$defs/count"}
+              }
+            },
+            "alerts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available"],
+              "properties": {
+                "available": {"type": "boolean"},
+                "critical": {"$ref": "#/$defs/count"},
+                "warnings": {"$ref": "#/$defs/count"},
+                "info": {"$ref": "#/$defs/count"}
+              }
+            },
+            "credentials": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["gmail", "calendar", "telegram"],
+              "properties": {
+                "gmail": {"$ref": "#/$defs/credential_status"},
+                "calendar": {"$ref": "#/$defs/credential_status"},
+                "telegram": {"$ref": "#/$defs/credential_status"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

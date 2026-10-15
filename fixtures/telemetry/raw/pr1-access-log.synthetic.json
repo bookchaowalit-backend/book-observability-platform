@@ -1,0 +1,59 @@
+{
+  "source": "PR #1 src/platform_observability/middleware.py access-log line shape (synthetic values, modelled on review probe output)",
+  "lines": [
+    {
+      "service": "Shared_API",
+      "method": "GET",
+      "route": "/api/items/{item_id:int}",
+      "status": 200,
+      "duration_seconds": 0.003114,
+      "correlation_id": "0b6f1f0e-3c1d-4a7e-9a55-2f1d9c3b7e10",
+      "trace_id": "5b8efff798038103d269b633813fc60c"
+    },
+    {
+      "service": "Shared_API",
+      "method": "GET",
+      "route": "/api/files/{path:path}",
+      "status": 200,
+      "duration_seconds": 0.0021,
+      "correlation_id": "6a1e2c3d-4b5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "trace_id": "0af7651916cd43dd8448eb211c80319c"
+    },
+    {
+      "service": "Shared_API",
+      "method": "POST",
+      "route": "/api/v1/things/",
+      "status": 201,
+      "duration_seconds": 0.0109,
+      "correlation_id": "7d2e3f4a-5b6c-4d7e-8f90-a1b2c3d4e5f6",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+    },
+    {
+      "service": "Shared_API",
+      "method": "GET",
+      "route": "/.well-known/health",
+      "status": 200,
+      "duration_seconds": 0.0008,
+      "correlation_id": "8e3f4a5b-6c7d-4e8f-9a01-b2c3d4e5f6a7",
+      "trace_id": "9c3b1f0e2d4a6b8c0e1f2a3b4c5d6e7f"
+    },
+    {
+      "service": "media",
+      "method": "GET",
+      "route": "unmatched",
+      "status": 404,
+      "duration_seconds": 0.0004,
+      "correlation_id": "9f4a5b6c-7d8e-4f90-a1b2-c3d4e5f6a7b8",
+      "trace_id": "1e2d3c4b5a69788796a5b4c3d2e1f0a9"
+    },
+    {
+      "service": "media",
+      "method": "GET",
+      "route": "/broken",
+      "status": 500,
+      "duration_seconds": 0.0012,
+      "correlation_id": "a05b6c7d-8e9f-4a01-b2c3-d4e5f6a7b8c9",
+      "trace_id": "2f3e4d5c6b7a89908a7b6c5d4e3f2a1b"
+    }
+  ]
+}

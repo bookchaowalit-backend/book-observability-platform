@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "route": "/api/rates/usd1",
+  "status": 200,
+  "duration_seconds": 0.002,
+  "correlation_id": "26980061-e670-49ba-8e17-141944054981",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "event": "sync.app.started",
+  "schema_version": "observability.telemetry.v1",
+  "signal": "log",
+  "retention_class": "log-14d",
+  "service": "platform.app",
+  "environment": "local",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "level": "info"
+}

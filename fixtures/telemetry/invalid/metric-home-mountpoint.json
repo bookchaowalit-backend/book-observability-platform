@@ -1,0 +1,21 @@
+{
+  "expect": "$.labels.mountpoint matches a disallowed pattern",
+  "why": "node-exporter mountpoint under a home directory names the user",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "metric",
+    "retention_class": "metric-30d",
+    "service": "node-exporter",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "name": "node_filesystem_avail_bytes",
+    "type": "gauge",
+    "unit": "bytes",
+    "value": 1,
+    "labels": {
+      "job": "node-exporter",
+      "instance": "se-node-exporter:9100",
+      "mountpoint": "/home/synthetic-user/data"
+    }
+  }
+}
