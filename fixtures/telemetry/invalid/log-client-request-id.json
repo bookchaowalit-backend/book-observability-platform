@@ -1,0 +1,20 @@
+{
+  "expect": "$.request_id does not match pattern",
+  "why": "client-supplied X-Request-ID; only server-generated IDs are allowed (G5)",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "log",
+    "retention_class": "log-14d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "level": "info",
+    "event": "request.completed",
+    "method": "GET",
+    "route": "api",
+    "request_id": "client-chosen-id-001",
+    "status": 200,
+    "latency_ms": 12.5,
+    "subject_hash": "token:0123456789abcdef"
+  }
+}

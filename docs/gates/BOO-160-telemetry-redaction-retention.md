@@ -17,7 +17,7 @@ for this gate).
 | Section (anchor) | Lines | What it requires | Answered by |
 |---|---|---|---|
 | `#operational-limits-and-failure-behavior`, row *Observability* | 163 | Gap: "Add structured logs, latency metrics, centralized audit retention, and SLO evidence" | Schema `log` / `metric` / `trace` variants and the retention table below (SLO evidence is not covered) |
-| `#authentication-classes` | 63-65 | Provider credentials must not be written to responses, logs, tasks or payload metadata | `x-forbidden.keys` (token, authorization, api_key, secret, provider…) and `value_patterns` (bearer, JWT, provider keys, private keys) |
+| `#authentication-classes` | 63-65 | Provider credentials must not be written to responses, logs, tasks or payload metadata | `x-forbidden.keys` (token, authorization, api_key, secret, provider…) and `value_patterns` (bearer, Basic auth, JWT, Stripe/GitHub/Slack/AWS/Google/Anthropic/OpenAI keys, `ya29.` tokens, Telegram bot tokens, private keys). Keys are matched after camelCase splitting and as name components, so `accessToken` and `x-api-key` match. |
 | `#bookfinance-api-v1` | 104-107 | Only redacted access metadata (subject, scope, route, status, query-key names); raw bearer tokens and payload values never persisted | Closed objects with no free-text field; `route` is a template or route class; amounts and currency strings rejected |
 
 ## What this change adds
@@ -27,7 +27,7 @@ for this gate).
 | [`schema/telemetry/redacted-telemetry-event.v1.schema.json`](../../schema/telemetry/redacted-telemetry-event.v1.schema.json) | JSON Schema (2020-12) allow-list: one `log`, `metric`, `trace` or `health_snapshot` per document. Every object is `additionalProperties: false`; there is no free-text field. `x-forbidden` lists forbidden keys and value patterns. |
 | [`scripts/telemetry_policy.py`](../../scripts/telemetry_policy.py) | Dependency-free validator for that schema plus the `x-forbidden` scan, and `redact_health_snapshot()` which maps the real `system_health.full_health()` payload onto the allow-list. |
 | [`fixtures/gates/telemetry-redaction-retention.json`](../../fixtures/gates/telemetry-redaction-retention.json) | Machine-readable gate record: contract references, retention table, dashboard consumers, and the per-field source inventory with a disposition (keep / transform / drop) and `file:line` for each field. |
-| `fixtures/telemetry/{valid,invalid,raw}/` | Synthetic events only. 8 valid, 20 invalid (each with the expected rejection reason), and one synthetic raw `system_health` payload. |
+| `fixtures/telemetry/{valid,invalid,raw}/` | Synthetic events only. 10 valid, 43 invalid (each with the expected rejection reason), a synthetic raw `system_health` payload, and synthetic PR #1 access-log lines modelled on its real output. |
 | [`tests/test_telemetry_policy.py`](../../tests/test_telemetry_policy.py) | Run by `bash scripts/check.sh` (unittest discover). |
 
 ## Current sources (inventory)
@@ -70,20 +70,39 @@ The inventory reads the last revisions that contained them: `99ddc05c` for
 ### Logs: `platform-api-gateway` `request.completed` (6e1fb34 `src/book_api_gateway/server.py:363-372`)
 
 `event`, `method`, `route` (route class), `request_id`, `status`, `latency_ms`,
-`subject_hash` are all kept and fit the `log` variant unchanged. PR #1 in this
-repository (unmerged, branch `codex/shared-infrastructure-20261015`) would add
-an access-log line from `src/platform_observability/middleware.py` with
-`service`, `method`, `route`, `status`, `duration_seconds`, `correlation_id` and
-`trace_id`. Each of those maps 1:1 onto the `log` variant
-(`fixtures/telemetry/valid/log-access-middleware.json`). This branch is cut from
-`main` and touches none of PR #1's files.
+`subject_hash` are kept. `request_id` must be server-generated (uuid4 hex or a
+canonical UUID); a client-supplied `X-Request-ID` that the gateway echoes is
+rejected (G5).
+
+### Logs, spans and metrics from PR #1 (`platform_observability.instrument()`)
+
+PR #1 in this repository (unmerged, branch `codex/shared-infrastructure-20261015`)
+adds `src/platform_observability/`. A review probe of its real output found
+shapes the first version of this schema rejected. Each is now handled:
+
+| PR #1 output | Handling here |
+|---|---|
+| Starlette route templates `{item_id:int}`, `{path:path}`, trailing `/`, `/.well-known/...` (middleware `_ROUTE`) | Schema `route` accepts converter segments, an optional trailing `/` and dot-first literal segments. Literal segments must still start with a letter, so raw numeric IDs stay rejected. |
+| Access-log line with no `event` / `level` / envelope | Not widened. The collector wraps each line with `envelope_access_log()`, which adds the envelope, the fixed event `http.request` and a `level` derived from status. Producer fields that collide with the envelope are refused. |
+| `service_name` matching `[A-Za-z0-9_.-]{1,64}` (e.g. `Shared_API`) | Schema `service` uses the same character set. |
+| `instance` relabelled to the pod name, no port (`config/prometheus.yaml`) | `labels.instance` takes a name with an optional `:port`. IP literals are still rejected. |
+| Span resource attributes `telemetry.sdk.*`, `service.instance.id` | Added to the trace attribute allow-list. |
+| `duration_seconds` above 3600 (not bounded by PR #1) | **Open for the owner (G10).** Requests longer than an hour fail validation. |
+
+`fixtures/telemetry/raw/pr1-access-log.synthetic.json` and the `*-pr1-*` valid
+fixtures model this output, and run in CI. `PR1RuntimeTelemetryTests` runs the
+real `instrument()` on a FastAPI app with those routes and validates every log
+line, span and `/metrics` sample. It skips until PR #1's package and its test
+dependencies are importable, and runs under PR #1's pytest workflow once both
+are merged. On a local test merge of PR #1 at `e2d1ab3` (Python 3.12), all three
+pass. This branch is cut from `main` and touches none of PR #1's files.
 
 ### Existing dashboards
 
 | Consumer | Source | What it reads | Constraint on this gate |
 |---|---|---|---|
 | `bookchaowalit-ai/data-analytics-dashboard-web` @ `1f35f42` | `lib/analytics.ts:20-24`, README "CSV contract" | Browser-only CSV with `timestamp`, `segment`, `value`. Windows: 24H / 7D / 30D | Metric retention must be at least 30 days. If it is ever fed from this platform, `segment` must be a schema label value, never a person or customer. Today it reads no telemetry store. |
-| Grafana provisioning (solo-empire @ `b606a119`) | `grafana/provisioning/dashboards/{service-overview,system-metrics,mlops-reference}.json` | `up`, `node_*`, `traefik_service_requests_total`, `ALERTS`, `solo_empire_mlops_*`. Labels: `mode, fstype, mountpoint, device, cpu, service, code, alertstate, alertname, job, model_name, model_version` | Every metric name and label is on the allow-list (tested). `instance` must be `service:port`; IP literals and `/home/*` mountpoints are rejected. |
+| Grafana provisioning (solo-empire @ `b606a119`) | `grafana/provisioning/dashboards/{service-overview,system-metrics,mlops-reference}.json` | `up`, `node_*`, `traefik_service_requests_total`, `ALERTS`, `solo_empire_mlops_*`. Labels: `mode, fstype, mountpoint, device, cpu, service, code, alertstate, alertname, job, model_name, model_version` | Every metric name and label is on the allow-list (tested). `instance` must be a service or pod name with an optional `:port`; IP literals and `/home/*` mountpoints are rejected. |
 
 ## Retention policy (proposed)
 
@@ -101,24 +120,27 @@ log cannot claim metric retention.
 
 | ID | Gap | Evidence |
 |---|---|---|
-| G1 | No redaction code exists on `main` of this repository. The redactor here covers health snapshots only. Logs and traces depend on producers emitting allow-listed fields. | `git ls-tree origin/main` |
+| G1 | No redaction code exists on `main` of this repository today. The redactor here covers health snapshots only. Logs and traces depend on producers emitting allow-listed fields. **This changes once PR #1 lands:** its `instrument()` becomes the platform's log/span/metric producer, and `PR1RuntimeTelemetryTests` then checks its real output against this schema. | `git ls-tree origin/main`; PR #1 |
 | G2 | `telemetry.ts` sets `http.route` to the raw `url.pathname` and copies `error.message` into the span status. `HttpInstrumentation` adds the full URL, peer IP and user agent. The schema rejects all of these, but nothing in the source strips them yet. | telemetry.ts:34, 70-73; server.ts:524 |
 | G3 | `system_health.py` returns `str(e)` for cron, freshness and alert failures, and `--save` persists raw revenue amounts. | :117, :135, :154, :381-387 |
-| G4 | `system_health.py` timestamps are naive local time. The redactor assumes UTC unless told otherwise. | :178 |
-| G5 | The gateway accepts a client-supplied `X-Request-ID` matching `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`, which admits IP literals. Only the value scan catches this (proved against the real gateway when `PLATFORM_API_GATEWAY_SRC` is set). | gateway server.py:26, 134-138 |
+| G4 | `system_health.py` timestamps are naive local time. The redactor reads them as Asia/Bangkok, the host zone (override with `assume_tz=` or `--assume-tz`), and converts to UTC. If the host zone changes, the redactor has to be told. | :178 |
+| G5 | The gateway echoes a client-supplied `X-Request-ID` matching `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`, which admits IP literals and arbitrary IDs. The schema now accepts only server-generated IDs, so those gateway events are **rejected** until the gateway hashes or replaces client IDs (proved against the real gateway in CI). | gateway server.py:26, 134-138 |
 | G6 | `subject_hash` is an unkeyed `sha256(token)[:16]`. It is a stable pseudonym, linkable across events and across 14 days of logs. A keyed HMAC with rotation is not designed here. | gateway server.py:229 |
 | G7 | Loki has no retention and Tempo's volume path does not match its storage path. Neither is changed here. | see table |
 | G8 | Alertmanager notification history, Grafana annotations and the audit log are not covered. `audit_log` retention ("centralized audit retention", contract line 163) still needs its own decision. | contract:163 |
-| G9 | The two source-drift checks (`SYSTEM_HEALTH_SOURCE`, `PLATFORM_API_GATEWAY_SRC`) need local checkouts and are skipped in CI. In CI the inventory is checked against the synthetic raw fixture only. | tests |
+| G9 | The gateway tests run in CI against the public `platform-api-gateway` pinned at `6e1fb34` (`REQUIRE_GATEWAY_TESTS=1` turns a missing checkout into a failure). The `system_health` drift check needs private solo-empire and stays a local one-off check, frozen at `99ddc05c`: the producer no longer exists at solo-empire HEAD. | `.github/workflows/check.yml`; tests |
+| G10 | PR #1 emits no envelope (`schema_version`, `signal`, `retention_class`, `environment`, `observed_at`), and its `duration_seconds` is unbounded while the schema caps it at 3600. The owner decides whether the envelope is added by a collector adapter (as modelled here) or by PR #1 itself, and whether to keep the cap. | PR #1 middleware.py |
 
 ## Verification
 
 ```bash
 bash scripts/check.sh
-# optional, with local checkouts:
-SYSTEM_HEALTH_SOURCE=/path/system_health.py \
-PLATFORM_API_GATEWAY_SRC=/path/platform-api-gateway/src \
-  python3 -m unittest -v tests.test_telemetry_policy
+# as CI runs it (gateway tests required):
+REQUIRE_GATEWAY_TESTS=1 PLATFORM_API_GATEWAY_SRC=/path/platform-api-gateway/src bash scripts/check.sh
+# local one-off, frozen source:
+SYSTEM_HEALTH_SOURCE=/path/system_health.py python3 -m unittest -v tests.test_telemetry_policy
+# health snapshot from a raw system_health JSON (naive times read as Asia/Bangkok):
+python3 scripts/telemetry_policy.py redact-health --assume-tz Asia/Bangkok RAW.json
 ```
 
 The tests fail if:
@@ -130,7 +152,9 @@ The tests fail if:
 - a raw `system_health` field has no disposition, or (with `SYSTEM_HEALTH_SOURCE`) the real producer emits a key the inventory does not cover;
 - a retention row is missing or mismatched for a signal, or metric retention falls below the widest dashboard window;
 - a Grafana metric or label used today is not on the allow-list;
-- (with `PLATFORM_API_GATEWAY_SRC`) a real gateway event is not schema-valid, or its field set drifts from the inventory.
+- (CI, `PLATFORM_API_GATEWAY_SRC`) a real gateway event is not schema-valid, its field set drifts from the inventory, or a client-supplied request ID is accepted;
+- PR #1-shaped log lines stop validating after `envelope_access_log()`, or (once PR #1 is importable) the real `instrument()` output does not validate;
+- naive `system_health` times are not read as Asia/Bangkok by default.
 
 ## Owner decision — PROPOSED, NOT ACCEPTED
 
@@ -138,9 +162,13 @@ The owner (`bookchaowalit-backend`, observability platform) is asked to accept
 or amend:
 
 1. Telemetry reaching this platform must validate against
-   `observability.telemetry.v1` (this schema). The schema is an allow-list,
-   has no free-text field, and the `x-forbidden` scan stays on even if an
-   object is opened later.
+   `observability.telemetry.v1` (this schema) **after collector-side
+   enveloping** (`envelope_access_log()` / `envelope_gateway_event()`). The
+   schema is an allow-list, has no free-text field, and the `x-forbidden` scan
+   stays on even if an object is opened later. Today, PR #1 output (synthetic
+   fixtures plus a local test merge) validates once wrapped. Gateway events
+   validate except when they carry a client-supplied request ID (G5). The owner
+   still has to decide G10.
 2. Retention: metrics 30 days, logs 14 days, traces 7 days, health snapshots
    90 days. Purge within 24 h of expiry, and keep telemetry out of backups.
 3. The health snapshot drops revenue amounts and personal goal, habit and task

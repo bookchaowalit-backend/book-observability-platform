@@ -11,7 +11,7 @@ amounts, personal counts, provider names and free-text errors.
 Usage::
 
     python3 scripts/telemetry_policy.py validate EVENT.json [...]
-    python3 scripts/telemetry_policy.py redact-health RAW.json
+    python3 scripts/telemetry_policy.py redact-health [--assume-tz Asia/Bangkok] RAW.json
 """
 
 from __future__ import annotations
@@ -19,14 +19,19 @@ from __future__ import annotations
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schema" / "telemetry" / "redacted-telemetry-event.v1.schema.json"
 SCHEMA_VERSION = "observability.telemetry.v1"
+# system_health.py writes datetime.now().isoformat(): naive wall-clock time on the
+# operator host, which runs in Asia/Bangkok (+07:00).
+SYSTEM_HEALTH_TZ = "Asia/Bangkok"
+ENVELOPE_KEYS = frozenset({"schema_version", "signal", "retention_class", "service", "environment", "observed_at"})
 SUPPORTED_KEYWORDS = frozenset({
     "$schema", "$id", "$defs", "$ref", "title", "description", "x-status", "x-forbidden",
     "type", "const", "enum", "pattern", "minLength", "maxLength", "minimum", "maximum",
@@ -45,25 +50,40 @@ def load_schema() -> dict[str, Any]:
 
 
 def _normalise_key(key: str) -> str:
-    return re.sub(r"[-.]", "_", key.lower())
+    """camelCase -> snake_case, lowercase, '-' and '.' -> '_'."""
+
+    key = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
+    key = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
+    return re.sub(r"[-.]+", "_", key.lower()).strip("_")
 
 
 @lru_cache(maxsize=1)
-def _forbidden() -> tuple[frozenset[str], tuple[tuple[str, re.Pattern[str]], ...]]:
+def _forbidden() -> tuple[tuple[tuple[str, ...], ...], tuple[tuple[str, re.Pattern[str]], ...]]:
     rules = load_schema()["x-forbidden"]
-    keys = frozenset(_normalise_key(key) for key in rules["keys"])
+    keys = tuple(sorted({tuple(_normalise_key(key).split("_")) for key in rules["keys"]}))
     patterns = tuple((name, re.compile(pattern)) for name, pattern in rules["value_patterns"].items())
     return keys, patterns
+
+
+def forbidden_key(key: str) -> bool:
+    """True when a forbidden name equals the key or is a run of its components."""
+
+    parts = tuple(_normalise_key(key).split("_"))
+    for forbidden in _forbidden()[0]:
+        size = len(forbidden)
+        if any(parts[index:index + size] == forbidden for index in range(len(parts) - size + 1)):
+            return True
+    return False
 
 
 def scan_forbidden(value: Any, path: str = "$") -> list[str]:
     """Return a finding for every forbidden key or forbidden-looking string value."""
 
-    keys, patterns = _forbidden()
+    patterns = _forbidden()[1]
     findings: list[str] = []
     if isinstance(value, dict):
         for key, child in value.items():
-            if _normalise_key(str(key)) in keys:
+            if forbidden_key(str(key)):
                 findings.append(f"{path}.{key}: forbidden key")
             findings.extend(scan_forbidden(child, f"{path}.{key}"))
     elif isinstance(value, list):
@@ -171,7 +191,7 @@ _CRON_STATUSES = {"success", "failed", "running", "pending", "skipped"}
 _JOB_TYPE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 
 
-def _utc(raw: Any, assume_tz: timezone) -> str | None:
+def _utc(raw: Any, assume_tz: tzinfo) -> str | None:
     try:
         moment = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
@@ -206,15 +226,20 @@ def redact_health_snapshot(
     *,
     service: str = "solo-empire-health",
     environment: str = "local",
-    assume_tz: timezone = timezone.utc,
+    assume_tz: tzinfo | str = SYSTEM_HEALTH_TZ,
 ) -> dict[str, Any]:
     """Map a system_health ``full_health()`` payload onto the health_snapshot allow-list.
+
+    Naive source timestamps are read in ``assume_tz`` (default Asia/Bangkok, the
+    zone system_health.py runs in) and converted to UTC.
 
     Dropped on purpose: revenue amounts/displays/by_currency, goal/habit/task
     counts (personal productivity records), cron/freshness/alerts ``error``
     text, credential ``message``/``provider`` and any key not listed here.
     """
 
+    if isinstance(assume_tz, str):
+        assume_tz = ZoneInfo(assume_tz)
     if raw.get("schema_version") != "1.0":
         raise ValueError("unsupported system_health schema_version")
     observed_at = _utc(raw.get("timestamp"), assume_tz)
@@ -240,6 +265,8 @@ def redact_health_snapshot(
         cron["failed_jobs"] = [job for job in cron_raw.get("failed_jobs", []) if isinstance(job, str) and _JOB_TYPE.fullmatch(job)][:64]
         recent = []
         for item in cron_raw.get("recent", [])[:5]:
+            if not isinstance(item, dict):
+                continue
             job_type = item.get("job_type")
             if not isinstance(job_type, str) or not _JOB_TYPE.fullmatch(job_type):
                 continue
@@ -282,6 +309,27 @@ def redact_health_snapshot(
     }
 
 
+def _envelope(event: dict[str, Any], *, observed_at: str, service: str, environment: str, level: str, extra: dict[str, Any]) -> dict[str, Any]:
+    clash = ENVELOPE_KEYS & set(event)
+    if clash:
+        raise ValueError(f"producer event sets envelope field(s) {sorted(clash)}")
+    return {
+        **event,
+        **extra,
+        "schema_version": SCHEMA_VERSION,
+        "signal": "log",
+        "retention_class": "log-14d",
+        "service": service,
+        "environment": environment,
+        "observed_at": observed_at,
+        "level": level,
+    }
+
+
+def _level(status: Any) -> str:
+    return "error" if isinstance(status, int) and not isinstance(status, bool) and status >= 500 else "info"
+
+
 def envelope_gateway_event(
     event: dict[str, Any],
     *,
@@ -292,21 +340,27 @@ def envelope_gateway_event(
     """Wrap a platform-api-gateway ``request.completed`` event without filtering it.
 
     Every gateway field is copied as-is, so a new or renamed gateway field fails
-    validation instead of being silently dropped.
+    validation instead of being silently dropped. A gateway field that collides
+    with an envelope field is refused.
     """
 
-    status = event.get("status")
-    level = "error" if isinstance(status, int) and status >= 500 else "info"
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "signal": "log",
-        "retention_class": "log-14d",
-        "service": service,
-        "environment": environment,
-        "observed_at": observed_at,
-        "level": level,
-        **event,
-    }
+    return _envelope(event, observed_at=observed_at, service=service, environment=environment,
+                     level=_level(event.get("status")), extra={})
+
+
+def envelope_access_log(line: dict[str, Any], *, observed_at: str, environment: str = "local") -> dict[str, Any]:
+    """Wrap one PR #1 ``platform_observability`` access-log line (collector side).
+
+    The line carries ``service`` itself and no ``event``/``level``; the collector
+    adds the fixed event name ``http.request`` and derives ``level`` from status.
+    All other fields are copied as-is.
+    """
+
+    body = {key: value for key, value in line.items() if key != "service"}
+    if "event" in body or "level" in body:
+        raise ValueError("access-log line unexpectedly carries event/level")
+    return _envelope(body, observed_at=observed_at, service=line.get("service", ""), environment=environment,
+                     level=_level(line.get("status")), extra={"event": "http.request"})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -321,11 +375,17 @@ def main(argv: list[str] | None = None) -> int:
             if not errors:
                 print(f"OK {name}")
         return 1 if failed else 0
-    if len(args) == 2 and args[0] == "redact-health":
-        event = redact_health_snapshot(json.loads(Path(args[1]).read_text(encoding="utf-8")))
+    if args and args[0] == "redact-health" and len(args) in {2, 4}:
+        assume_tz = SYSTEM_HEALTH_TZ
+        if len(args) == 4:
+            if args[1] != "--assume-tz":
+                print("usage: telemetry_policy.py redact-health [--assume-tz ZONE] RAW.json", file=sys.stderr)
+                return 2
+            assume_tz = args[2]
+        event = redact_health_snapshot(json.loads(Path(args[-1]).read_text(encoding="utf-8")), assume_tz=assume_tz)
         print(json.dumps(event, indent=2, sort_keys=True))
         return 1 if validate_event(event) else 0
-    print("usage: telemetry_policy.py validate EVENT.json [...] | redact-health RAW.json", file=sys.stderr)
+    print("usage: telemetry_policy.py validate EVENT.json [...] | redact-health [--assume-tz ZONE] RAW.json", file=sys.stderr)
     return 2
 
 

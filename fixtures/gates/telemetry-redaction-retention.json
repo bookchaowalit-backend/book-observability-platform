@@ -155,7 +155,7 @@
           "disposition": "transform",
           "target": "observed_at",
           "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:178",
-          "why": "naive local time in source; redactor normalises to UTC (gap G4)"
+          "why": "naive wall-clock time from datetime.now() on the Asia/Bangkok host; redactor reads it as Asia/Bangkok (override with --assume-tz) and converts to UTC (gap G4)"
         },
         {
           "path": "revenue.unavailable",
@@ -330,7 +330,7 @@
           "disposition": "transform",
           "target": "sections.cron.recent[].last_run",
           "source": "solo-empire@99ddc05c:infra/scripts/utils/system_health.py:106",
-          "why": "normalised to UTC"
+          "why": "normalised to UTC; naive values read as Asia/Bangkok"
         },
         {
           "path": "cron.recent[].status",
@@ -609,7 +609,7 @@
           "path": "request_id",
           "disposition": "keep",
           "target": "request_id",
-          "why": "client-controlled when X-Request-ID matches REQUEST_ID_RE (server.py:26,134-138); value scan rejects IP-shaped IDs (gap G5)"
+          "why": "schema allows only server-generated uuid4 hex; the gateway still echoes a client X-Request-ID matching REQUEST_ID_RE (server.py:26,134-138), which the schema rejects (gap G5)"
         },
         {
           "path": "status",
@@ -630,7 +630,7 @@
       ]
     },
     "pr1_access_log_reference": {
-      "source": "bookchaowalit-backend/platform-observability PR #1 (codex/shared-infrastructure-20261015, not on main):src/platform_observability/middleware.py",
+      "source": "bookchaowalit-backend/platform-observability PR #1 (codex/shared-infrastructure-20261015, not on main): src/platform_observability/middleware.py",
       "fields": [
         "service",
         "method",
@@ -640,7 +640,17 @@
         "correlation_id",
         "trace_id"
       ],
-      "note": "each field maps 1:1 onto the log variant; not exercised here because PR #1 is unmerged"
+      "adapter": "scripts/telemetry_policy.py envelope_access_log(): collector adds the envelope, fixed event 'http.request' and level from status",
+      "schema_accommodations": [
+        "route: Starlette converter segments {name:conv}, trailing '/', dot-first segments ('/.well-known')",
+        "service: [A-Za-z0-9_.-]{1,64} (same as instrument())",
+        "metric label instance: pod name without port (config/prometheus.yaml relabel)",
+        "trace attributes: telemetry.sdk.*, service.instance.id resource attributes"
+      ],
+      "open_for_owner": [
+        "duration_seconds maximum 3600 is not enforced by PR #1",
+        "PR #1 emits no envelope (schema_version/signal/retention_class/environment/observed_at); a collector adapter must add it"
+      ]
     }
   }
 }

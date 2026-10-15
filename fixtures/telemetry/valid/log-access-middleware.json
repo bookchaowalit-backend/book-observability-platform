@@ -1,16 +1,16 @@
 {
+  "method": "GET",
+  "route": "/api/items/{item_id:int}",
+  "status": 200,
+  "duration_seconds": 0.003114,
+  "correlation_id": "0b6f1f0e-3c1d-4a7e-9a55-2f1d9c3b7e10",
+  "trace_id": "5b8efff798038103d269b633813fc60c",
+  "event": "http.request",
   "schema_version": "observability.telemetry.v1",
   "signal": "log",
   "retention_class": "log-14d",
-  "service": "platform-workflow",
+  "service": "Shared_API",
   "environment": "local",
   "observed_at": "2026-10-15T08:00:00Z",
-  "level": "info",
-  "event": "http.request",
-  "method": "POST",
-  "route": "/v1/runs/{run_id}",
-  "status": 201,
-  "duration_seconds": 0.042,
-  "correlation_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+  "level": "info"
 }

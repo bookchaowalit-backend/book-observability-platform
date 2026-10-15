@@ -1,0 +1,23 @@
+{
+  "schema_version": "observability.telemetry.v1",
+  "signal": "trace",
+  "retention_class": "trace-7d",
+  "service": "Shared_API",
+  "environment": "staging",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
+  "name": "POST /api/v1/things/",
+  "kind": "server",
+  "duration_seconds": 0.0109,
+  "status_code": "unset",
+  "attributes": {
+    "service.name": "Shared_API",
+    "telemetry.sdk.name": "opentelemetry",
+    "telemetry.sdk.language": "python",
+    "telemetry.sdk.version": "1.45.1",
+    "http.request.method": "POST",
+    "http.route": "/api/v1/things/",
+    "http.response.status_code": 201
+  }
+}

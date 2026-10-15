@@ -1,0 +1,21 @@
+{
+  "expect": "$.jwt: forbidden key",
+  "why": "sensitive key spelled 'jwt'",
+  "event": {
+    "schema_version": "observability.telemetry.v1",
+    "signal": "log",
+    "retention_class": "log-14d",
+    "service": "platform-api-gateway",
+    "environment": "local",
+    "observed_at": "2026-10-15T08:00:00Z",
+    "level": "info",
+    "event": "request.completed",
+    "method": "GET",
+    "route": "api",
+    "request_id": "8f14e45fceea167a5a36dedd4bea2543",
+    "status": 200,
+    "latency_ms": 12.5,
+    "subject_hash": "token:0123456789abcdef",
+    "jwt": "synthetic"
+  }
+}

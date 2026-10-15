@@ -5,7 +5,12 @@ checkout path is supplied (they are skipped in CI):
 
 - SYSTEM_HEALTH_SOURCE=/path/to/system_health.py (solo-empire 99ddc05c^ or later)
 - PLATFORM_API_GATEWAY_SRC=/path/to/platform-api-gateway/src (exercises the
-  real gateway telemetry sink)
+  real gateway telemetry sink; CI checks out the public repo pinned at 6e1fb34
+  and sets REQUIRE_GATEWAY_TESTS=1 so a missing checkout fails instead of skipping)
+
+PR1RuntimeTelemetryTests run the real platform_observability.instrument() when
+PR #1's package and its test dependencies (fastapi, opentelemetry-sdk,
+prometheus-client) are importable, i.e. after PR #1 lands; skipped otherwise.
 """
 
 from __future__ import annotations
@@ -122,12 +127,10 @@ class SchemaShapeTests(unittest.TestCase):
         walk(SCHEMA["$defs"], "#/$defs")
 
     def test_no_allowed_field_is_a_forbidden_key(self) -> None:
-        forbidden = {policy._normalise_key(key) for key in SCHEMA["x-forbidden"]["keys"]}
-
         def walk(node: Any, path: str) -> None:
             if isinstance(node, dict):
                 for key in node.get("properties", {}):
-                    self.assertNotIn(policy._normalise_key(key), forbidden, f"{path}.{key} is allowed but forbidden")
+                    self.assertFalse(policy.forbidden_key(key), f"{path}.{key} is allowed but forbidden")
                 for key, child in node.items():
                     walk(child, f"{path}/{key}")
 
@@ -174,6 +177,10 @@ class ForbiddenFieldTests(unittest.TestCase):
     SAMPLES = {
         "email": "synthetic.person@example.invalid",
         "bearer_token": "Bearer synthetic0123456789token",
+        "basic_auth": "Basic c3ludGhldGljOnN5bnRoZXRpYw==",
+        "telegram_bot_token": "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+        "thai_phone": "081-234-5678",
+        "grouped_number": "4111 1111 1111 1111",
         "jwt": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.c2ln",
         "provider_key": "sk_live_SYNTHETIC0123456789",
         "private_key": "-----BEGIN RSA PRIVATE KEY-----",
@@ -197,8 +204,27 @@ class ForbiddenFieldTests(unittest.TestCase):
                     errors = policy.validate_event(event)
                     self.assertIn(f"$.{field}: forbidden value ({name})", errors)
 
+    EXTRA_SAMPLES = (
+        ("provider_key", "sk-ant-api03-SYNTHETICsyntheticSYNTHETIC0123"),
+        ("provider_key", "sk-proj-SYNTHETICsyntheticSYNTHETIC0123"),
+        ("provider_key", "ya29.a0SYNTHETICsyntheticToken0123"),
+        ("thai_phone", "0812345678"),
+        ("phone", "+66812345678"),
+        ("phone", "+66 81 234 5678"),
+        ("grouped_number", "4111-1111-1111-1111"),
+        ("grouped_number", "1-2345-67890-12-3"),
+        ("email", "synthetic.user%40example.invalid"),
+        ("url", "www.example.invalid"),
+        ("url", "example.com/callback"),
+    )
+
+    def test_extra_samples_are_flagged(self) -> None:
+        for name, sample in self.EXTRA_SAMPLES:
+            with self.subTest(sample=sample):
+                self.assertIn(f"$.x: forbidden value ({name})", policy.scan_forbidden({"x": sample}))
+
     def test_amounts_with_currency_codes_are_flagged(self) -> None:
-        for sample in ("1,250.00 THB", "$40", "99 USD"):
+        for sample in ("1,250.00 THB", "$40", "99 USD", "THB 1,250", "1,250\u0e3f", "40 usd", "500 baht"):
             with self.subTest(sample=sample):
                 self.assertIn("$.x: forbidden value (currency_amount)", policy.scan_forbidden({"x": sample}))
 
@@ -219,7 +245,8 @@ class ForbiddenFieldTests(unittest.TestCase):
                 self.assertIn(f"$.attributes.{key}: forbidden key", policy.validate_event(attributed))
 
     def test_key_normalisation_catches_spelling_variants(self) -> None:
-        for key in ("Net-Peer-IP", "net_peer_ip", "HTTP.URL", "Set-Cookie", "API-Key"):
+        for key in ("Net-Peer-IP", "net_peer_ip", "HTTP.URL", "Set-Cookie", "API-Key", "accessToken", "sessionId",
+                    "clientIp", "user_email", "x-api-key", "enduser.id", "jwt", "X-Forwarded-For", "refreshToken"):
             with self.subTest(key=key):
                 self.assertTrue(policy.scan_forbidden({key: "x"}))
 
@@ -303,6 +330,34 @@ class HealthRedactionTests(unittest.TestCase):
         self.assertEqual(event["sections"]["alerts"], {"available": False})
         self.assertEqual(policy.validate_event(event), [])
 
+    def test_naive_source_time_is_read_as_bangkok_by_default(self) -> None:
+        self.assertEqual(self.redacted["observed_at"], "2026-10-15T08:00:00Z")
+        # The snapshot must not claim to be observed before or long after its latest job run.
+        latest = max(item["last_run"] for item in self.redacted["sections"]["cron"]["recent"])
+        self.assertLessEqual(latest, self.redacted["observed_at"])
+        from datetime import datetime
+
+        gap = datetime.fromisoformat(self.redacted["observed_at"]) - datetime.fromisoformat(latest)
+        self.assertLess(gap.total_seconds(), 3600)
+
+    def test_assume_tz_can_be_overridden(self) -> None:
+        event = policy.redact_health_snapshot(copy.deepcopy(RAW_HEALTH), assume_tz="UTC")
+        self.assertEqual(event["observed_at"], "2026-10-15T15:00:00Z")
+
+    def test_cli_redact_health_with_assume_tz(self) -> None:
+        raw = str(FIXTURES / "raw" / "system-health-full.synthetic.json")
+        for args, expected in ((["redact-health", raw], "2026-10-15T08:00:00Z"),
+                               (["redact-health", "--assume-tz", "UTC", raw], "2026-10-15T15:00:00Z")):
+            buffer = io.StringIO()
+            with self.subTest(args=args), contextlib.redirect_stdout(buffer):
+                self.assertEqual(policy.main(args), 0)
+            self.assertEqual(json.loads(buffer.getvalue())["observed_at"], expected)
+
+    def test_non_dict_recent_items_are_skipped(self) -> None:
+        raw = copy.deepcopy(RAW_HEALTH)
+        raw["cron"]["recent"].insert(0, "synthetic string row")
+        self.assertEqual(policy.validate_event(policy.redact_health_snapshot(raw)), [])
+
     def test_offset_timestamps_are_normalised_to_utc(self) -> None:
         raw = dict(copy.deepcopy(RAW_HEALTH), timestamp="2026-10-15T22:00:00+07:00")
         self.assertEqual(policy.redact_health_snapshot(raw)["observed_at"], "2026-10-15T15:00:00Z")
@@ -310,6 +365,40 @@ class HealthRedactionTests(unittest.TestCase):
     def test_unknown_source_version_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             policy.redact_health_snapshot(dict(RAW_HEALTH, schema_version="2.0"))
+
+
+class PR1AccessLogShapeTests(unittest.TestCase):
+    """PR #1 access-log lines (synthetic, modelled on its real output) validate after the collector envelope."""
+
+    def test_pr1_lines_validate_after_envelope(self) -> None:
+        raw = _load(FIXTURES / "raw" / "pr1-access-log.synthetic.json")
+        self.assertEqual({key for line in raw["lines"] for key in line},
+                         set(GATE["sources"]["pr1_access_log_reference"]["fields"]))
+        for line in raw["lines"]:
+            with self.subTest(route=line["route"]):
+                event = policy.envelope_access_log(line, observed_at="2026-10-15T08:00:00Z")
+                self.assertEqual(policy.validate_event(event), [])
+                self.assertEqual(event["level"], "error" if line["status"] >= 500 else "info")
+
+    def test_committed_access_log_fixture_is_adapter_output(self) -> None:
+        line = _load(FIXTURES / "raw" / "pr1-access-log.synthetic.json")["lines"][0]
+        self.assertEqual(policy.envelope_access_log(line, observed_at="2026-10-15T08:00:00Z"), _valid("log-access-middleware"))
+
+    def test_starlette_route_templates_are_accepted_and_raw_paths_are_not(self) -> None:
+        route = SCHEMA["$defs"]["route"]
+        for good in ("/api/items/{item_id:int}", "/api/files/{path:path}", "/api/v1/things/", "/.well-known/health",
+                     "unmatched", "/", "/v1/runs/{run_id}"):
+            with self.subTest(route=good):
+                self.assertEqual(policy.schema_errors(good, route, SCHEMA), [])
+        for bad in ("/api/items/42", "/api/items/42/", "/v1/runs?owner=x", "api/items", "/api/{Item Id}", "//"):
+            with self.subTest(route=bad):
+                self.assertTrue(policy.schema_errors(bad, route, SCHEMA))
+
+    def test_envelope_fields_cannot_be_overridden_by_producers(self) -> None:
+        with self.assertRaises(ValueError):
+            policy.envelope_gateway_event({"event": "request.completed", "signal": "metric"}, observed_at="2026-10-15T08:00:00Z")
+        with self.assertRaises(ValueError):
+            policy.envelope_access_log({"service": "media", "retention_class": "health-90d"}, observed_at="2026-10-15T08:00:00Z")
 
 
 class RetentionTests(unittest.TestCase):
@@ -395,6 +484,15 @@ class SystemHealthSourceDriftTests(unittest.TestCase):
         self.assertEqual(missing, [], "system_health emits fields with no redaction disposition")
 
 
+class GatewayRequirementTests(unittest.TestCase):
+    def test_gateway_checkout_present_when_required(self) -> None:
+        if os.environ.get("REQUIRE_GATEWAY_TESTS") != "1":
+            self.skipTest("REQUIRE_GATEWAY_TESTS is not set")
+        source = os.environ.get("PLATFORM_API_GATEWAY_SRC", "")
+        self.assertTrue(source and (Path(source) / "book_api_gateway" / "server.py").is_file(),
+                        "REQUIRE_GATEWAY_TESTS=1 but PLATFORM_API_GATEWAY_SRC is not a platform-api-gateway src dir")
+
+
 @unittest.skipUnless(os.environ.get("PLATFORM_API_GATEWAY_SRC"), "set PLATFORM_API_GATEWAY_SRC to exercise the real gateway telemetry")
 class GatewayTelemetryTests(unittest.TestCase):
     """Run platform-api-gateway's real request path and validate its telemetry events."""
@@ -449,7 +547,117 @@ class GatewayTelemetryTests(unittest.TestCase):
         # Gap G5: REQUEST_ID_RE accepts an IPv4 literal; only the value scan stops it.
         event = self._call("/healthz", {"X-Request-ID": "203.0.113.7"})
         self.assertEqual(event["request_id"], "203.0.113.7")
-        self.assertIn("$.request_id: forbidden value (ipv4)", policy.validate_event(event))
+        errors = policy.validate_event(event)
+        self.assertIn("$.request_id: forbidden value (ipv4)", errors)
+        self.assertTrue(any(error.startswith("$.request_id does not match pattern") for error in errors))
+
+
+def _pr1_runtime_available() -> bool:
+    if not (ROOT / "src" / "platform_observability" / "__init__.py").is_file():
+        return False
+    return all(importlib.util.find_spec(name) is not None
+               for name in ("fastapi", "httpx", "prometheus_client", "opentelemetry.sdk"))
+
+
+@unittest.skipUnless(_pr1_runtime_available(), "PR #1 runtime (src/platform_observability + fastapi/otel/prometheus) not available")
+class PR1RuntimeTelemetryTests(unittest.TestCase):
+    """Validate the real output of platform_observability.instrument() (PR #1) against the schema."""
+
+    ROUTES = ("/api/items/{item_id:int}", "/api/files/{path:path}", "/api/v1/things/", "/.well-known/health")
+
+    def setUp(self) -> None:
+        import logging
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+        sys.path.insert(0, str(ROOT / "src"))
+        self.addCleanup(sys.path.remove, str(ROOT / "src"))
+        import platform_observability
+
+        app = FastAPI()
+
+        @app.get("/api/items/{item_id:int}")
+        def item(item_id: int) -> dict[str, int]:
+            return {"id": item_id}
+
+        @app.get("/api/files/{path:path}")
+        def files(path: str) -> dict[str, str]:
+            return {"ok": "yes"}
+
+        @app.post("/api/v1/things/")
+        def things() -> dict[str, str]:
+            return {"ok": "yes"}
+
+        @app.get("/.well-known/health")
+        def well_known() -> dict[str, str]:
+            return {"ok": "yes"}
+
+        self.exporter = InMemorySpanExporter()
+        platform_observability.instrument(app, service_name="Shared_API", metrics_token="synthetic-metrics-token-0123",
+                                          exporter=self.exporter)
+        self.lines: list[dict[str, Any]] = []
+        handler = logging.Handler()
+        handler.emit = lambda record: self.lines.append(json.loads(record.getMessage()))  # type: ignore[method-assign]
+        logger = logging.getLogger("platform_observability")
+        logger.addHandler(handler)
+        previous = logger.level
+        logger.setLevel(logging.INFO)
+        self.addCleanup(logger.removeHandler, handler)
+        self.addCleanup(logger.setLevel, previous)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            client.get("/api/items/42?email=synthetic%40example.invalid")
+            client.get("/api/files/private/synthetic-customer.txt", headers={"Authorization": "Bearer synthetic-header"})
+            client.post("/api/v1/things/", json={"amount": "THB 1,250"})
+            client.get("/.well-known/health")
+            client.get("/nope/12345")
+            self.metrics = client.get("/metrics", headers={"Authorization": "Bearer synthetic-metrics-token-0123"}).text
+
+    def test_access_log_lines_validate(self) -> None:
+        self.assertEqual(len(self.lines), 5)
+        for line in self.lines:
+            with self.subTest(route=line.get("route")):
+                event = policy.envelope_access_log(line, observed_at="2026-10-15T08:00:00Z")
+                self.assertEqual(policy.validate_event(event), [])
+        self.assertEqual({line["route"] for line in self.lines}, set(self.ROUTES) | {"unmatched"})
+
+    def test_spans_validate(self) -> None:
+        spans = self.exporter.get_finished_spans()
+        self.assertEqual(len(spans), 5)
+        for span in spans:
+            attributes = {**dict(span.resource.attributes), **dict(span.attributes)}
+            event = {
+                "schema_version": policy.SCHEMA_VERSION, "signal": "trace", "retention_class": "trace-7d",
+                "service": "Shared_API", "environment": "ci", "observed_at": "2026-10-15T08:00:00Z",
+                "trace_id": format(span.context.trace_id, "032x"), "span_id": format(span.context.span_id, "016x"),
+                "name": span.name, "kind": span.kind.name.lower(),
+                "duration_seconds": (span.end_time - span.start_time) / 1e9,
+                "status_code": span.status.status_code.name.lower(), "attributes": attributes,
+            }
+            with self.subTest(span=span.name):
+                self.assertEqual(policy.validate_event(event), [])
+
+    def test_metric_samples_validate_with_pod_instance(self) -> None:
+        from prometheus_client.parser import text_string_to_metric_families
+
+        types = {"_bucket": "histogram_bucket", "_sum": "histogram_sum", "_count": "histogram_count"}
+        count = 0
+        for family in text_string_to_metric_families(self.metrics):
+            for sample in family.samples:
+                kind = next((v for k, v in types.items() if sample.name.endswith(k)), "counter" if family.type == "counter" and sample.name.endswith("_total") else "gauge")
+                labels = dict(sample.labels, job="shared-infra", instance="shared-api-7d9f8b6c5-x2x7q")
+                event = {
+                    "schema_version": policy.SCHEMA_VERSION, "signal": "metric", "retention_class": "metric-30d",
+                    "service": "Shared_API", "environment": "ci", "observed_at": "2026-10-15T08:00:00Z",
+                    "name": sample.name, "type": kind, "value": sample.value, "labels": labels,
+                }
+                with self.subTest(sample=sample.name, labels=sample.labels):
+                    self.assertEqual(policy.validate_event(event), [])
+                count += 1
+        self.assertGreater(count, 10)
+        for private in ("42", "synthetic-customer", "synthetic%40", "1,250", "12345"):
+            self.assertNotIn(f'"{private}', self.metrics)
 
 
 if __name__ == "__main__":
