@@ -1,0 +1,18 @@
+{
+  "schema_version": "observability.telemetry.v1",
+  "signal": "metric",
+  "retention_class": "metric-30d",
+  "service": "shared-api.dev",
+  "environment": "staging",
+  "observed_at": "2026-10-15T08:00:00Z",
+  "name": "node_filesystem_avail_bytes",
+  "type": "gauge",
+  "unit": "bytes",
+  "value": 1024,
+  "labels": {
+    "job": "kubernetes.io",
+    "instance": "shared-api-7d9f8b6c5-x2x7q",
+    "mountpoint": "/mnt/data.io",
+    "route": "/sk-test-endpoint-fixture"
+  }
+}

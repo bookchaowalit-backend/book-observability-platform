@@ -65,6 +65,13 @@ def _forbidden() -> tuple[tuple[tuple[str, ...], ...], tuple[tuple[str, re.Patte
     return keys, patterns
 
 
+@lru_cache(maxsize=1)
+def _exempt_formats() -> dict[str, re.Pattern[str]]:
+    rules = load_schema()["x-forbidden"]["exempt_when_format_matches"]
+    return {key: re.compile(pattern) for key, pattern in rules.items() if key != "description"}
+
+
+@lru_cache(maxsize=4096)
 def forbidden_key(key: str) -> bool:
     """True when a forbidden name equals the key or is a run of its components."""
 
@@ -76,8 +83,13 @@ def forbidden_key(key: str) -> bool:
     return False
 
 
-def scan_forbidden(value: Any, path: str = "$") -> list[str]:
-    """Return a finding for every forbidden key or forbidden-looking string value."""
+def scan_forbidden(value: Any, path: str = "$", field: str | None = None) -> list[str]:
+    """Return a finding for every forbidden key or forbidden-looking string value.
+
+    A value under a format-pinned key (trace/span/correlation/request IDs) is not
+    pattern-scanned when it already matches its closed hex/UUID format: random
+    hex can look like a digit run, but cannot carry free text.
+    """
 
     patterns = _forbidden()[1]
     findings: list[str] = []
@@ -85,11 +97,14 @@ def scan_forbidden(value: Any, path: str = "$") -> list[str]:
         for key, child in value.items():
             if forbidden_key(str(key)):
                 findings.append(f"{path}.{key}: forbidden key")
-            findings.extend(scan_forbidden(child, f"{path}.{key}"))
+            findings.extend(scan_forbidden(child, f"{path}.{key}", str(key)))
     elif isinstance(value, list):
         for index, child in enumerate(value):
             findings.extend(scan_forbidden(child, f"{path}[{index}]"))
     elif isinstance(value, str):
+        exempt = _exempt_formats().get(field or "")
+        if exempt is not None and exempt.fullmatch(value):
+            return findings
         for name, pattern in patterns:
             if pattern.search(value):
                 findings.append(f"{path}: forbidden value ({name})")

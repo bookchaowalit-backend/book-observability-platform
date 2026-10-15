@@ -22,10 +22,12 @@ import importlib.util
 import io
 import json
 import os
+import random
 import re
 import sys
 import threading
 import unittest
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -209,6 +211,7 @@ class ForbiddenFieldTests(unittest.TestCase):
         ("provider_key", "sk-proj-SYNTHETICsyntheticSYNTHETIC0123"),
         ("provider_key", "ya29.a0SYNTHETICsyntheticToken0123"),
         ("thai_phone", "0812345678"),
+        ("thai_phone", "66812345678"),
         ("phone", "+66812345678"),
         ("phone", "+66 81 234 5678"),
         ("grouped_number", "4111-1111-1111-1111"),
@@ -246,7 +249,8 @@ class ForbiddenFieldTests(unittest.TestCase):
 
     def test_key_normalisation_catches_spelling_variants(self) -> None:
         for key in ("Net-Peer-IP", "net_peer_ip", "HTTP.URL", "Set-Cookie", "API-Key", "accessToken", "sessionId",
-                    "clientIp", "user_email", "x-api-key", "enduser.id", "jwt", "X-Forwarded-For", "refreshToken"):
+                    "clientIp", "user_email", "x-api-key", "enduser.id", "jwt", "X-Forwarded-For", "refreshToken",
+                    "credit_card", "creditCard", "cvv"):
             with self.subTest(key=key):
                 self.assertTrue(policy.scan_forbidden({key: "x"}))
 
@@ -260,6 +264,69 @@ class ForbiddenFieldTests(unittest.TestCase):
             with self.subTest(name=name):
                 event = dict(_valid("metric-requests-total"), name=name)
                 self.assertIn("$.name matches a disallowed pattern", policy.validate_event(event))
+
+
+class NoFalsePositiveTests(unittest.TestCase):
+    """Legitimate telemetry must not be rejected by the value scan (round-2 review)."""
+
+    N = 20_000
+    PR1_LINE = _load(FIXTURES / "raw" / "pr1-access-log.synthetic.json")["lines"][0]
+
+    def test_reviewer_uuid_with_all_digit_tail(self) -> None:
+        line = dict(self.PR1_LINE, correlation_id="26980061-e670-49ba-8e17-141944054981")
+        self.assertEqual(policy.validate_event(policy.envelope_access_log(line, observed_at="2026-10-15T08:00:00Z")), [])
+
+    def test_random_uuid4_correlation_and_request_ids_pass(self) -> None:
+        rng = random.Random(160)
+        request_schema = _variant("log")["properties"]["request_id"]
+        failures = []
+        for index in range(self.N):
+            value = uuid.UUID(int=rng.getrandbits(128), version=4)
+            if index % 4 == 0:  # force the worst case: an all-digit last group
+                value = uuid.UUID(str(value)[:24] + "".join(rng.choice("0123456789") for _ in range(12)))
+            line = dict(self.PR1_LINE, correlation_id=str(value))
+            if policy.scan_forbidden(policy.envelope_access_log(line, observed_at="2026-10-15T08:00:00Z")):
+                failures.append(str(value))
+            for request_id in (value.hex, str(value)):
+                if policy.scan_forbidden({"request_id": request_id}) or policy.schema_errors(request_id, request_schema, SCHEMA):
+                    failures.append(request_id)
+        self.assertEqual(failures[:5], [])
+
+    def test_random_span_and_trace_ids_pass(self) -> None:
+        rng = random.Random(161)
+        base = _valid("trace-server-span")
+        failures = []
+        for index in range(self.N):
+            alphabet = "0123456789" if index % 4 == 0 else "0123456789abcdef"
+            span_id = "".join(rng.choice(alphabet) for _ in range(16))
+            trace_id = "".join(rng.choice(alphabet) for _ in range(32))
+            event = dict(base, span_id=span_id, parent_span_id=span_id[::-1], trace_id=trace_id)
+            if policy.scan_forbidden(event):
+                failures.append(span_id)
+        self.assertEqual(failures[:5], [])
+        self.assertEqual(policy.validate_event(dict(base, span_id="2658756600664653")), [])
+
+    def test_unpinned_value_in_a_pinned_field_is_still_scanned(self) -> None:
+        errors = policy.validate_event(dict(_valid("log-request-completed"), request_id="203.0.113.7"))
+        self.assertIn("$.request_id: forbidden value (ipv4)", errors)
+
+    def test_dotted_identifiers_and_routes_are_not_urls_or_amounts(self) -> None:
+        log = _valid("log-request-completed")
+        metric = _valid("metric-requests-total")
+        cases = [("service", s) for s in ("platform.app", "media.io", "shared-api.dev", "catalog.ai", "notify.me", "data.co")]
+        cases += [("event", e) for e in ("sync.app.started", "model.ai.inference", "auth.me.lookup", "storage.io.error")]
+        cases += [("route", r) for r in ("/api/config.io", "/api/rates/usd1", "/api/v1/usd2thb", "/sk-test-endpoint-fixture",
+                                          "/.well-known/health")]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                self.assertEqual(policy.validate_event(dict(log, **{field: value})), [])
+        labels = {"job": ("kubernetes.io", "prometheus.io"), "mountpoint": ("/mnt/data.io",), "model_name": ("ranker.ai",)}
+        for label, values in labels.items():
+            for value in values:
+                with self.subTest(label=label, value=value):
+                    event = copy.deepcopy(metric)
+                    event["labels"][label] = value
+                    self.assertEqual(policy.validate_event(event), [])
 
 
 class HealthRedactionTests(unittest.TestCase):

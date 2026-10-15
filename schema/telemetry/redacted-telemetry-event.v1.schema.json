@@ -18,25 +18,35 @@
       "customer", "customer_id", "customer_name", "user_id", "tenant_id", "workspace_id",
       "full_name", "first_name", "last_name", "address", "card_number", "iban", "account_number",
       "national_id", "provider", "jwt", "enduser_id", "id_token", "credential", "credentials_json", "private_key",
-      "bot_token", "chat_id", "line_user_id"
+      "bot_token", "chat_id", "line_user_id", "credit_card", "cvv", "cvc"
     ],
     "key_normalisation": "camelCase split to snake_case, lowercased, '-' and '.' read as '_'; a key is forbidden when the listed name equals it or appears in it as a run of whole '_'-separated components (so 'accessToken', 'x-api-key', 'user_email' and 'Net-Peer-IP' all match)",
+    "exempt_when_format_matches": {
+      "description": "Fields whose schema pattern is a closed hex/UUID format cannot carry free text. Their values skip the value-pattern scan only when they already match that format; a non-matching value (e.g. a client-supplied request ID) is still scanned and also fails the schema.",
+      "trace_id": "^[0-9a-f]{32}$",
+      "span_id": "^[0-9a-f]{16}$",
+      "parent_span_id": "^[0-9a-f]{16}$",
+      "correlation_id": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "request_id": "^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+      "service.instance.id": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "subject_hash": "^token:[0-9a-f]{16}$"
+    },
     "value_patterns": {
       "email": "[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}",
       "bearer_token": "(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{8,}",
       "basic_auth": "(?i)\\bbasic\\s+[A-Za-z0-9+/]{8,}={0,2}",
       "jwt": "\\beyJ[A-Za-z0-9_-]{5,}\\.[A-Za-z0-9_-]{5,}\\.",
-      "provider_key": "\\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|\\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}|\\bya29\\.[A-Za-z0-9_-]{10,}|\\bgh[pousr]_[A-Za-z0-9]{20,}|\\bgithub_pat_[A-Za-z0-9_]{20,}|\\bxox[abprs]-[A-Za-z0-9-]{10,}|\\bAKIA[0-9A-Z]{16}\\b|\\bAIza[0-9A-Za-z_-]{20,}",
+      "provider_key": "\\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|\\bsk-(?:ant|proj)-[A-Za-z0-9_-]{16,}|\\bsk-[A-Za-z0-9]{32,}|\\bya29\\.[A-Za-z0-9_-]{10,}|\\bgh[pousr]_[A-Za-z0-9]{20,}|\\bgithub_pat_[A-Za-z0-9_]{20,}|\\bxox[abprs]-[A-Za-z0-9-]{10,}|\\bAKIA[0-9A-Z]{16}\\b|\\bAIza[0-9A-Za-z_-]{20,}",
       "telegram_bot_token": "(?<![0-9A-Za-z])\\d{6,12}:[A-Za-z0-9_-]{30,}",
       "private_key": "-----BEGIN [A-Z ]*PRIVATE KEY-----",
       "ipv4": "(?<![0-9.])(?:\\d{1,3}\\.){3}\\d{1,3}(?![0-9.])",
       "ipv6": "(?i)(?<![0-9a-z:])(?:(?:[0-9a-f]{1,4}:){3,7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)(?![0-9a-z:])",
-      "currency_amount": "(?i)[\u0e3f$\u20ac\u00a3\u00a5]\\s?\\d|\\d\\s?\u0e3f|\\b\\d[\\d,]*(?:\\.\\d+)?\\s?(?:thb|usd|eur|gbp|jpy|sgd|baht)\\b|\\b(?:thb|usd|eur|gbp|jpy|sgd)\\s?\\d",
+      "currency_amount": "(?i)[\u0e3f$\u20ac\u00a3\u00a5]\\s?\\d|\\d\\s?\u0e3f|\\b\\d[\\d,]*(?:\\.\\d+)?\\s?(?:thb|usd|eur|gbp|jpy|sgd|baht)\\b|\\b(?:thb|usd|eur|gbp|jpy|sgd)(?:\\s\\d|\\d*[,.]\\d)",
       "phone": "\\+\\d[\\d ()-]{7,}\\d",
-      "thai_phone": "(?<![0-9A-Za-z])0[689]\\d[- ]?\\d{3}[- ]?\\d{4}(?![0-9A-Za-z])",
+      "thai_phone": "(?<![0-9A-Za-z])(?:0[689]\\d[- ]?\\d{3}[- ]?\\d{4}|66[689]\\d{8})(?![0-9A-Za-z])",
       "long_digit_run": "(?<![0-9A-Za-z])\\d{12,19}(?![0-9A-Za-z])",
       "grouped_number": "(?<![0-9A-Za-z])(?:\\d{4}[ -]){3}\\d{1,7}(?![0-9A-Za-z])|(?<![0-9A-Za-z])\\d-\\d{4}-\\d{5}-\\d{2}-\\d(?![0-9A-Za-z])",
-      "url": "(?i)\\b[a-z][a-z0-9+.-]{1,15}://|\\bwww\\.[a-z0-9-]+\\.[a-z]{2,}|\\b[a-z0-9-]+\\.(?:com|net|org|io|co|th|dev|app|ai|me|invalid|example)(?:/|$|\\b)"
+      "url": "(?i)\\b[a-z][a-z0-9+.-]{1,15}://|\\bwww\\.[a-z0-9-]+\\.[a-z]{2,}|(?<![\\w./-])[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|net|org|io|co|th|dev|app|ai|me|invalid|example)/[^\\s/]"
     }
   },
   "oneOf": [

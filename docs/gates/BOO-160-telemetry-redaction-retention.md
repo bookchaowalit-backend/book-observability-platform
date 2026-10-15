@@ -24,10 +24,10 @@ for this gate).
 
 | File | Purpose |
 |---|---|
-| [`schema/telemetry/redacted-telemetry-event.v1.schema.json`](../../schema/telemetry/redacted-telemetry-event.v1.schema.json) | JSON Schema (2020-12) allow-list: one `log`, `metric`, `trace` or `health_snapshot` per document. Every object is `additionalProperties: false`; there is no free-text field. `x-forbidden` lists forbidden keys and value patterns. |
+| [`schema/telemetry/redacted-telemetry-event.v1.schema.json`](../../schema/telemetry/redacted-telemetry-event.v1.schema.json) | JSON Schema (2020-12) allow-list: one `log`, `metric`, `trace` or `health_snapshot` per document. Every object is `additionalProperties: false`; there is no free-text field. `x-forbidden` lists forbidden keys and value patterns. Fields pinned to a closed hex/UUID format (trace, span, correlation and request IDs, `subject_hash`) skip the value scan only when they already match that format, because random hex can look like a digit run. Bare domains count as URLs only when a path follows and they do not sit inside a dotted name or route, so names like `platform.app`, `kubernetes.io` and `/mnt/data.io` pass. |
 | [`scripts/telemetry_policy.py`](../../scripts/telemetry_policy.py) | Dependency-free validator for that schema plus the `x-forbidden` scan, and `redact_health_snapshot()` which maps the real `system_health.full_health()` payload onto the allow-list. |
 | [`fixtures/gates/telemetry-redaction-retention.json`](../../fixtures/gates/telemetry-redaction-retention.json) | Machine-readable gate record: contract references, retention table, dashboard consumers, and the per-field source inventory with a disposition (keep / transform / drop) and `file:line` for each field. |
-| `fixtures/telemetry/{valid,invalid,raw}/` | Synthetic events only. 10 valid, 43 invalid (each with the expected rejection reason), a synthetic raw `system_health` payload, and synthetic PR #1 access-log lines modelled on its real output. |
+| `fixtures/telemetry/{valid,invalid,raw}/` | Synthetic events only. 13 valid, 45 invalid (each with the expected rejection reason), a synthetic raw `system_health` payload, and synthetic PR #1 access-log lines modelled on its real output. |
 | [`tests/test_telemetry_policy.py`](../../tests/test_telemetry_policy.py) | Run by `bash scripts/check.sh` (unittest discover). |
 
 ## Current sources (inventory)
@@ -148,6 +148,7 @@ The tests fail if:
 - a valid fixture breaks the schema, or an invalid fixture passes or fails for a different reason;
 - any forbidden key (top level, metric label, span attribute) or forbidden value pattern is accepted;
 - an allowed field is itself a forbidden key, or any object is left open;
+- legitimate values are rejected: 20,000 random uuid4 correlation/request IDs and 20,000 span/trace IDs (a quarter forced all-digit), dotted service/event/label names and routes such as `/api/rates/usd1`;
 - `redact_health_snapshot()` output stops validating, changes from the committed fixture, or leaks a dropped value;
 - a raw `system_health` field has no disposition, or (with `SYSTEM_HEALTH_SOURCE`) the real producer emits a key the inventory does not cover;
 - a retention row is missing or mismatched for a signal, or metric retention falls below the widest dashboard window;
