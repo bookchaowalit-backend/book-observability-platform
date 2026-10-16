@@ -45,7 +45,7 @@ consumer.
 - retention policy
 - alert drill
 
-Gate evidence (proposed, not accepted):
+Gate evidence (owner decision accepted 2026-10-16; dashboards deferred):
 [BOO-160 redacted telemetry schema and retention](gates/BOO-160-telemetry-redaction-retention.md).
 
 ## Out of scope

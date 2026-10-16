@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/bookchaowalit-backend/platform-observability/schema/telemetry/redacted-telemetry-event.v1.schema.json",
-  "title": "Redacted telemetry event v1 (PROPOSED, BOO-160)",
-  "description": "Allow-list for telemetry that may reach the observability platform: one log, metric, trace span or health snapshot per document. Every object is closed (additionalProperties false), free-text fields do not exist, and x-forbidden lists keys and value patterns that must never appear anywhere in an event even if a later schema version opens an object. Retention periods per retention_class live in fixtures/gates/telemetry-redaction-retention.json. Proposed by BOO-160; not accepted by the owner.",
-  "x-status": "proposed-not-accepted",
+  "title": "Redacted telemetry event v1 (BOO-160, accepted 2026-10-16)",
+  "description": "Allow-list for telemetry that may reach the observability platform: one log, metric, trace span or health snapshot per document. Every object is closed (additionalProperties false), free-text fields do not exist, and x-forbidden lists keys and value patterns that must never appear anywhere in an event even if a later schema version opens an object. Retention periods per retention_class live in fixtures/gates/telemetry-redaction-retention.json. Accepted by the owner on 2026-10-16 (BOO-160).",
+  "x-status": "accepted-2026-10-16",
   "x-forbidden": {
     "keys": [
       "email", "e_mail", "phone", "phone_number", "password", "passwd", "secret", "client_secret",
