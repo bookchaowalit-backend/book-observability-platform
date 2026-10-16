@@ -468,6 +468,41 @@ class PR1AccessLogShapeTests(unittest.TestCase):
             policy.envelope_access_log({"service": "media", "retention_class": "health-90d"}, observed_at="2026-10-15T08:00:00Z")
 
 
+class OwnerDecisionTests(unittest.TestCase):
+    """The owner accepted the BOO-160 decision on 2026-10-16; G10 and other gaps stay open."""
+
+    DOC = ROOT / "docs" / "gates" / "BOO-160-telemetry-redaction-retention.md"
+    MARKER = "## Owner decision \u2014 ACCEPTED (owner decision 2026-10-16)"
+    VERBATIM = "\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14 \u0e22\u0e01\u0e40\u0e27\u0e49\u0e19 140/256 (Recommended)"
+
+    def test_fixture_records_accepted_decision_with_date(self) -> None:
+        decision = GATE.get("owner_decision", {})
+        self.assertEqual(GATE["status"], "accepted")
+        self.assertEqual(decision.get("status"), "accepted")
+        self.assertEqual(decision.get("date"), "2026-10-16")
+        self.assertEqual(decision.get("verbatim"), self.VERBATIM)
+        self.assertTrue(decision.get("relayed_via"))
+
+    def test_undecided_items_remain_open(self) -> None:
+        still_open = " ".join(GATE["owner_decision"]["still_open"])
+        for gap in ("G10", "G5", "G6"):
+            self.assertIn(gap, still_open)
+
+    def test_accepted_retention_days(self) -> None:
+        days = {row["signal"]: row["proposed_days"] for row in GATE["retention"]}
+        self.assertEqual(days, {"metric": 30, "log": 14, "trace": 7, "health_snapshot": 90})
+
+    def test_doc_carries_accepted_marker_and_verbatim_answer(self) -> None:
+        text = self.DOC.read_text(encoding="utf-8")
+        self.assertIn(self.MARKER, text)
+        self.assertIn(self.VERBATIM, text)
+        self.assertNotIn("PROPOSED, NOT ACCEPTED", text)
+        self.assertIn("G10", text.split(self.MARKER, 1)[1])
+
+    def test_schema_status_is_accepted(self) -> None:
+        self.assertEqual(SCHEMA["x-status"], "accepted-2026-10-16")
+
+
 class RetentionTests(unittest.TestCase):
     def test_one_retention_row_per_signal_matching_the_schema_class(self) -> None:
         rows = {row["signal"]: row for row in GATE["retention"]}

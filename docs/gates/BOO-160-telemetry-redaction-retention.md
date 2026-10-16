@@ -1,7 +1,8 @@
 # BOO-160: redacted telemetry schema and retention
 
-Status: **evidence and proposal only.** Nothing here records an owner decision,
-connects a dashboard, changes a retention setting or moves a runtime.
+Status: **owner decision accepted 2026-10-16** (see the last section). The
+schema and retention policy are accepted, and dashboard connection is deferred.
+Nothing here connects a dashboard, applies a retention setting or moves a runtime.
 
 ## Next gate (verbatim)
 
@@ -104,7 +105,7 @@ pass. This branch is cut from `main` and touches none of PR #1's files.
 | `bookchaowalit-ai/data-analytics-dashboard-web` @ `1f35f42` | `lib/analytics.ts:20-24`, README "CSV contract" | Browser-only CSV with `timestamp`, `segment`, `value`. Windows: 24H / 7D / 30D | Metric retention must be at least 30 days. If it is ever fed from this platform, `segment` must be a schema label value, never a person or customer. Today it reads no telemetry store. |
 | Grafana provisioning (solo-empire @ `b606a119`) | `grafana/provisioning/dashboards/{service-overview,system-metrics,mlops-reference}.json` | `up`, `node_*`, `traefik_service_requests_total`, `ALERTS`, `solo_empire_mlops_*`. Labels: `mode, fstype, mountpoint, device, cpu, service, code, alertstate, alertname, job, model_name, model_version` | Every metric name and label is on the allow-list (tested). `instance` must be a service or pod name with an optional `:port`; IP literals and `/home/*` mountpoints are rejected. |
 
-## Retention policy (proposed)
+## Retention policy (accepted 2026-10-16)
 
 | Signal | `retention_class` | Store | Current (source) | Proposed | Purge after expiry | Backups |
 |---|---|---|---|---|---|---|
@@ -157,10 +158,11 @@ The tests fail if:
 - PR #1-shaped log lines stop validating after `envelope_access_log()`, or (once PR #1 is importable) the real `instrument()` output does not validate;
 - naive `system_health` times are not read as Asia/Bangkok by default.
 
-## Owner decision — PROPOSED, NOT ACCEPTED
+## Owner decision — ACCEPTED (owner decision 2026-10-16)
 
-The owner (`bookchaowalit-backend`, observability platform) is asked to accept
-or amend:
+Owner's answer, verbatim: "ทั้งหมด ยกเว้น 140/256 (Recommended)". That is, accept the recommended option on every pending gate decision except BOO-140 and BOO-256. It was relayed via the parent session (`local_a6dedf75`). For BOO-160 the relayed decision reads: "accept telemetry schema + retention 30/14/7/90 days; defer dashboards."
+
+Accepted options (text unchanged from the proposal):
 
 1. Telemetry reaching this platform must validate against
    `observability.telemetry.v1` (this schema) **after collector-side
@@ -178,5 +180,22 @@ or amend:
    `data-analytics-dashboard-web`) connects to a shared store until G2, G3 and
    G7 are fixed in their producers or configs and G5 and G6 have an owner decision.
 
-None of these are accepted. No status, retention setting, dashboard
-connection or runtime has been changed.
+### Still open after the decision
+
+The owner did not decide these, so they stay open:
+
+- **G10:** whether the collector adapter or PR #1 itself adds the envelope, and
+  whether to keep the 3600 s `duration_seconds` cap. Option 1 above names G10
+  as an owner decision still to make, so accepting option 1 does not decide it.
+- **G5 and G6:** gateway client-supplied `X-Request-ID` handling, and the
+  unkeyed `subject_hash`. Option 4 makes their owner decisions a precondition
+  for any dashboard connection.
+- **G2, G3 and G7:** producer and config fixes (telemetry.ts attributes,
+  system_health error text and saved amounts, Loki/Tempo retention and storage).
+  They are needed before any dashboard connects (option 4).
+- **G8:** audit_log and Alertmanager history retention.
+- **G1 and G9:** test coverage notes, unchanged.
+
+Accepting the decision changes no runtime. Retention is not yet applied to
+Prometheus, Loki or Tempo, no dashboard is connected, and the registry status
+is unchanged.

@@ -1,6 +1,27 @@
 {
   "issue": "BOO-160",
-  "status": "proposed-not-accepted",
+  "status": "accepted",
+  "owner_decision": {
+    "status": "accepted",
+    "date": "2026-10-16",
+    "verbatim": "ทั้งหมด ยกเว้น 140/256 (Recommended)",
+    "relayed_via": "parent session local_a6dedf75",
+    "accepted": [
+      "telemetry schema observability.telemetry.v1 (after collector-side enveloping)",
+      "retention metric 30d / log 14d / trace 7d / health_snapshot 90d, purge <=24h, excluded from backups",
+      "health snapshot drops revenue amounts and personal counts",
+      "dashboards deferred until G2, G3, G7 fixed and G5, G6 decided"
+    ],
+    "still_open": [
+      "G10 envelope owner and 3600s duration cap",
+      "G5 client X-Request-ID handling",
+      "G6 unkeyed subject_hash",
+      "G2",
+      "G3",
+      "G7",
+      "G8"
+    ]
+  },
   "next_gate": "Define redacted telemetry schema and retention before connecting existing dashboards.",
   "contract": {
     "repository": "bookchaowalit/architecture-docs",

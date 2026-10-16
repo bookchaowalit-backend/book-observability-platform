@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Redacted telemetry policy (BOO-160, PROPOSED): validate events and redact health snapshots.
+"""Redacted telemetry policy (BOO-160, accepted 2026-10-16): validate events and redact health snapshots.
 
 Dependency-free. ``validate_event`` applies
 ``schema/telemetry/redacted-telemetry-event.v1.schema.json`` (a closed allow-list)
